@@ -1,6 +1,6 @@
 # Legacy JSON UI static-analysis utilities
 
-These are developer analysis tools, separate from ConduitClient. They do not execute or inject into Minecraft. Keep all inputs and generated output in ignored `.local/` or a private external directory. Consult [the findings](../../docs/reverse-engineering/1.26.60-legacy-reload-path.md) for executable identity, observed coordinates, evidence limitations and the current stopping point.
+These are developer analysis tools, separate from ConduitClient. The static tools in the table below do not execute or inject into Minecraft; the separate Frida runtime workflow is described at the end. Keep all inputs and generated output in ignored `.local/` or a private external directory. Consult [the findings](../../docs/reverse-engineering/1.26.60-legacy-reload-path.md) for executable identity, observed coordinates, evidence limitations and the current stopping point.
 
 | Tool | Purpose and limits |
 |---|---|
@@ -46,3 +46,7 @@ c++ -O3 -std=c++20 tools/reverse-engineering/find_rip.cpp -o .local/analysis/fin
 ```
 
 Candidate absence does not prove absence of references; SIMD interior loads, absolute pointers and other encodings can require separate checks. No output from these utilities establishes a safe calling convention, object lifetime, runtime table, UI-thread contract or transactional reload behavior.
+
+## Frida on Proton
+
+The separate `frida-proton/` tools validate a Windows Frida server and disposable fixture inside the running game's Wine/runtime context. They default to probe-only validation; Minecraft inspection requires an explicit flag. See [the tested configuration and exact reproduction steps](../../docs/reverse-engineering/1.26.60-frida-proton.md). These are runtime instrumentation tools, unlike the static tools above; do not run them as part of static-only work.
