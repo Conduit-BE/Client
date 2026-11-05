@@ -1,6 +1,6 @@
 # Project guidance
 
-This project is a C++20 development client for Minecraft Bedrock GDK. Its primary feature is hot reloading JSON UI during development. REA is used to investigate game behavior and interfaces. The repository is currently a scaffold; paths below describe the intended layout and should be adjusted when the implementation establishes a different one.
+This project is a C++20 development client for Minecraft Bedrock GDK. Its intended primary feature is hot reloading JSON UI during development. REA is used to investigate game behavior and interfaces. The repository currently provides a Windows x64 DLL foundation with an explicit C API, portable core modules, and a standalone test harness. The Minecraft reload backend is a placeholder; see `docs/build.md` for build and lifecycle contracts.
 
 ## Coding conventions
 

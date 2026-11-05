@@ -1,0 +1,125 @@
+cmake_minimum_required(VERSION 3.24)
+project(ConduitClient VERSION 0.1.0 LANGUAGES C CXX)
+
+include(CTest)
+find_package(Threads REQUIRED)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+include(FetchContent)
+if(EXISTS "${CMAKE_SOURCE_DIR}/.local/deps/json/CMakeLists.txt")
+    set(FETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON "${CMAKE_SOURCE_DIR}/.local/deps/json")
+endif()
+FetchContent_Declare(nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG 55f93686c01528224f448c19128836e7df245f72)
+FetchContent_MakeAvailable(nlohmann_json)
+
+function(conduit_target target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8)
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    if(WIN32)
+        target_compile_definitions(${target} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    endif()
+    if(MINGW)
+        # Keep the harness/DLL independent of a separately deployed MinGW runtime.
+        target_link_options(${target} PRIVATE -static -static-libgcc -static-libstdc++)
+    endif()
+endfunction()
+
+add_library(ConduitCore STATIC
+    src/core/logger.cpp
+    src/core/notifications.cpp
+    src/core/file_monitor.cpp
+    src/core/json_ui.cpp
+    src/core/reload_manager.cpp)
+target_include_directories(ConduitCore PUBLIC src)
+target_link_libraries(ConduitCore PUBLIC Threads::Threads)
+target_link_libraries(ConduitCore PRIVATE nlohmann_json::nlohmann_json)
+conduit_target(ConduitCore)
+
+if(WIN32)
+    include(FetchContent)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/.local/deps/minhook/CMakeLists.txt")
+        set(FETCHCONTENT_SOURCE_DIR_MINHOOK "${CMAKE_SOURCE_DIR}/.local/deps/minhook")
+    endif()
+    FetchContent_Declare(minhook
+        GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git
+        GIT_TAG c3fcafdc10146beb5919319d0683e44e3c30d537)
+    FetchContent_MakeAvailable(minhook)
+    if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+        message(FATAL_ERROR "Conduit Client requires Windows x64")
+    endif()
+    add_library(ConduitClient SHARED
+        src/client.cpp
+        src/api.cpp
+        src/platform/windows/dll_main.cpp
+        src/platform/windows/auto_start.cpp
+        src/platform/windows/hotkey.cpp
+        src/platform/windows/d3d12_hud.cpp)
+    target_sources(ConduitClient PRIVATE src/platform/windows/overlay_hooks.cpp)
+    target_compile_definitions(ConduitClient PRIVATE CONDUIT_BUILDING_DLL)
+    target_include_directories(ConduitClient PUBLIC include PRIVATE src)
+    target_link_libraries(ConduitClient PRIVATE ConduitCore minhook user32 d3d12 dxgi d3dcompiler_47)
+    set_target_properties(ConduitClient PROPERTIES PREFIX "" OUTPUT_NAME ConduitClient)
+    conduit_target(ConduitClient)
+
+    if(BUILD_TESTING)
+        add_executable(ConduitHarness tests/windows_harness.cpp)
+        target_include_directories(ConduitHarness PRIVATE include)
+        target_link_libraries(ConduitHarness PRIVATE Threads::Threads)
+        add_dependencies(ConduitHarness ConduitClient)
+        conduit_target(ConduitHarness)
+        add_executable(ConduitLoaderSmoke tests/loader_smoke.cpp)
+        target_include_directories(ConduitLoaderSmoke PRIVATE include)
+        add_dependencies(ConduitLoaderSmoke ConduitClient)
+        conduit_target(ConduitLoaderSmoke)
+        add_executable(ConduitAutoSmoke tests/auto_smoke.cpp)
+        set_target_properties(ConduitAutoSmoke PROPERTIES OUTPUT_NAME Minecraft.Windows)
+        add_dependencies(ConduitAutoSmoke ConduitClient)
+        conduit_target(ConduitAutoSmoke)
+        add_executable(ConduitD3D12HudSmoke tests/d3d12_hud_smoke.cpp
+            src/platform/windows/d3d12_hud.cpp)
+        target_include_directories(ConduitD3D12HudSmoke PRIVATE src)
+        target_link_libraries(ConduitD3D12HudSmoke PRIVATE ConduitCore user32 d3d12 dxgi d3dcompiler_47)
+        conduit_target(ConduitD3D12HudSmoke)
+        add_executable(ConduitHookSmoke tests/d3d12_hud_smoke.cpp)
+        target_compile_definitions(ConduitHookSmoke PRIVATE CONDUIT_HOOK_SMOKE)
+        set_target_properties(ConduitHookSmoke PROPERTIES OUTPUT_NAME Minecraft.Windows
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/overlay")
+        target_include_directories(ConduitHookSmoke PRIVATE src)
+        target_link_libraries(ConduitHookSmoke PRIVATE user32 d3d12 dxgi)
+        add_dependencies(ConduitHookSmoke ConduitClient)
+        conduit_target(ConduitHookSmoke)
+        if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+            add_test(NAME dll_lifecycle COMMAND ConduitHarness ConduitClient.dll)
+            set_tests_properties(dll_lifecycle PROPERTIES TIMEOUT 60)
+            add_test(NAME loader_contract COMMAND ConduitLoaderSmoke $<TARGET_FILE:ConduitClient>)
+            set_tests_properties(loader_contract PROPERTIES TIMEOUT 60)
+            add_test(NAME automatic_ctrl_r COMMAND ConduitAutoSmoke $<TARGET_FILE:ConduitClient>)
+            set_tests_properties(automatic_ctrl_r PROPERTIES TIMEOUT 60)
+            add_test(NAME d3d12_hud_pixels COMMAND ConduitD3D12HudSmoke)
+            set_tests_properties(d3d12_hud_pixels PROPERTIES TIMEOUT 60)
+            add_test(NAME d3d12_present_hook COMMAND ConduitHookSmoke $<TARGET_FILE:ConduitClient>)
+            set_tests_properties(d3d12_present_hook PROPERTIES TIMEOUT 60)
+        endif()
+    endif()
+else()
+    message(STATUS "Native host build: portable core and tests only; use the MinGW toolchain for the DLL")
+endif()
+
+if(BUILD_TESTING)
+    add_executable(ConduitCoreTests tests/core_tests.cpp)
+    target_link_libraries(ConduitCoreTests PRIVATE ConduitCore)
+    conduit_target(ConduitCoreTests)
+    if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+        add_test(NAME core COMMAND ConduitCoreTests)
+        set_tests_properties(core PROPERTIES TIMEOUT 60)
+    else()
+        message(STATUS "Windows tests built but not registered: configure CMAKE_CROSSCOMPILING_EMULATOR to run them")
+    endif()
+endif()
