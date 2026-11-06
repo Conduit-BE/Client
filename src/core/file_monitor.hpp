@@ -18,7 +18,7 @@ struct FileChange {
 class FileMonitor {
 public:
     using Clock = std::chrono::steady_clock;
-    FileMonitor(std::filesystem::path root, std::chrono::milliseconds debounce);
+    FileMonitor(std::filesystem::path root, std::chrono::milliseconds debounce, bool skipDevelopmentMetadata = false);
     std::vector<FileChange> poll(Clock::time_point now);
 private:
     struct Fingerprint {
@@ -30,6 +30,7 @@ private:
     Snapshot scan() const;
     std::filesystem::path root_;
     std::chrono::milliseconds debounce_;
+    bool skipDevelopmentMetadata_ = false;
     Snapshot observed_;
     Snapshot published_;
     Clock::time_point lastChange_{};

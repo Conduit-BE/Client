@@ -68,6 +68,29 @@ if(WIN32)
     set_target_properties(ConduitClient PROPERTIES PREFIX "" OUTPUT_NAME ConduitClient)
     conduit_target(ConduitClient)
 
+    option(CONDUIT_EXPERIMENTAL_LEGACY_RELOAD "Build opt-in exact-version legacy UI reload prototype" OFF)
+    if(CONDUIT_EXPERIMENTAL_LEGACY_RELOAD)
+        add_library(ConduitReloadPrototype SHARED
+            src/client.cpp
+            src/platform/windows/hotkey.cpp
+            src/experimental/legacy_reload.cpp
+            src/experimental/prototype_entry.cpp)
+        target_include_directories(ConduitReloadPrototype PRIVATE include src)
+        target_link_libraries(ConduitReloadPrototype PRIVATE ConduitCore minhook user32 bcrypt)
+        set(CONDUIT_EXPERIMENTAL_DLL_NAME "ConduitReloadPrototype" CACHE STRING "Prototype DLL name; use a fresh name for in-process iterations")
+        set_target_properties(ConduitReloadPrototype PROPERTIES PREFIX "" OUTPUT_NAME "${CONDUIT_EXPERIMENTAL_DLL_NAME}")
+        conduit_target(ConduitReloadPrototype)
+        if(BUILD_TESTING)
+            add_executable(ConduitPrototypeGuardSmoke tests/prototype_guard_smoke.cpp)
+            add_dependencies(ConduitPrototypeGuardSmoke ConduitReloadPrototype)
+            conduit_target(ConduitPrototypeGuardSmoke)
+            if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+                add_test(NAME experimental_version_guard COMMAND ConduitPrototypeGuardSmoke $<TARGET_FILE:ConduitReloadPrototype>)
+                set_tests_properties(experimental_version_guard PROPERTIES TIMEOUT 60)
+            endif()
+        endif()
+    endif()
+
     if(BUILD_TESTING)
         add_executable(ConduitHarness tests/windows_harness.cpp)
         target_include_directories(ConduitHarness PRIVATE include)

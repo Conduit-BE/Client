@@ -155,6 +155,24 @@ void testNotifications() {
     require(center.snapshot(now + 10s).size() == 1, "Hiding diagnostics removed toast");
 }
 
+void testExperimentalMetadataScan() {
+    TempDirectory temp;
+    fs::create_directories(temp.path / ".git" / "nested");
+    fs::create_directories(temp.path / "@example" / "interfaces");
+    write(temp.path / "@example" / "interfaces" / "screen.json", R"({"namespace":"test","screen":{}})");
+    write(temp.path / ".git" / "nested" / "broken.json", "invalid metadata");
+    conduit::JsonUiRepository repository;
+    require(!repository.refresh(temp.path), "Default scan behavior changed");
+    require(repository.refresh(temp.path, true) && repository.info().files == 1,
+            "Experimental scan must validate custom definitions and skip metadata");
+    conduit::FileMonitor monitor(temp.path, 0ms, true);
+    write(temp.path / ".git" / "nested" / "broken.json", "changed metadata");
+    require(monitor.poll(conduit::FileMonitor::Clock::now()).empty(), "Metadata caused experimental reload");
+    write(temp.path / "@example" / "interfaces" / "screen.json", "invalid UI");
+    require(!monitor.poll(conduit::FileMonitor::Clock::now()).empty(), "Custom definition change missed");
+    require(!repository.refresh(temp.path, true), "Invalid custom UI was accepted");
+}
+
 void testJsonUi() {
     TempDirectory temp;
     conduit::JsonUiRepository repository;
@@ -185,6 +203,7 @@ int main() {
         testReloadAndHotkey();
         testNotifications();
         testJsonUi();
+        testExperimentalMetadataScan();
         std::cout << "Core tests passed: debounce, content changes, scan recovery, logging, hotkeys, backend\n";
         return 0;
     } catch (const std::exception& error) {

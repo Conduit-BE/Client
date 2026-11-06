@@ -18,7 +18,7 @@ struct JsonUiInfo {
 // The coordinator writes it; diagnostics readers receive a synchronized copy.
 class JsonUiRepository {
 public:
-    bool refresh(const std::filesystem::path& root);
+    bool refresh(const std::filesystem::path& root, bool skipDevelopmentMetadata = false);
     JsonUiInfo info() const;
 private:
     mutable std::mutex mutex_;

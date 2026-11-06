@@ -7,8 +7,8 @@
 #include <utility>
 
 namespace conduit {
-FileMonitor::FileMonitor(std::filesystem::path root, std::chrono::milliseconds debounce)
-    : root_(std::filesystem::absolute(std::move(root))), debounce_(debounce),
+FileMonitor::FileMonitor(std::filesystem::path root, std::chrono::milliseconds debounce, bool skipDevelopmentMetadata)
+    : root_(std::filesystem::absolute(std::move(root))), debounce_(debounce), skipDevelopmentMetadata_(skipDevelopmentMetadata),
       observed_(scan()), published_(observed_) {}
 
 FileMonitor::Snapshot FileMonitor::scan() const {
@@ -16,7 +16,14 @@ FileMonitor::Snapshot FileMonitor::scan() const {
         throw std::runtime_error("JSON UI directory is missing or inaccessible");
     }
     Snapshot snapshot;
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(root_)) {
+    for (auto iterator = std::filesystem::recursive_directory_iterator(root_);
+         iterator != std::filesystem::recursive_directory_iterator(); ++iterator) {
+        const auto& entry = *iterator;
+        if (skipDevelopmentMetadata_ && entry.is_directory() &&
+            (entry.path().filename() == ".git" || entry.path().filename() == ".vscode")) {
+            iterator.disable_recursion_pending();
+            continue;
+        }
         if (entry.is_symlink() || !entry.is_regular_file()) {
             continue;
         }

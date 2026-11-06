@@ -50,3 +50,11 @@ Candidate absence does not prove absence of references; SIMD interior loads, abs
 ## Frida on Proton
 
 The separate `frida-proton/` tools validate a Windows Frida server and disposable fixture inside the running game's Wine/runtime context. They default to probe-only validation; Minecraft inspection requires an explicit flag. See [the tested configuration and exact reproduction steps](../../docs/reverse-engineering/1.26.60-frida-proton.md). These are runtime instrumentation tools, unlike the static tools above; do not run them as part of static-only work.
+
+### Legacy UI runtime observation
+
+`frida-proton/monitor-legacy.py` reuses the validated server/probe gate and keeps a single observation session active for manual `/reload all` commands. Matching Node binding is required via `CONDUIT_FRIDA_MODULE`. Use the same required path/PID arguments as `validate.py`, a fresh `--output-dir`, and **no** `--inspect-minecraft` flag. Entry/return hooks in `monitor-legacy-agent.js` are build-specific to the verified 1.26.60.5 image. Create `OUTPUT_DIRECTORY/STOP` to detach and clean up only owned helpers; maximum duration is two hours. Do not run concurrently with another monitor.
+
+`frida-proton/summarize-legacy.py OUTPUT_DIRECTORY` aggregates the saved append-only event stream without target access. Its two-second grouping is a display heuristic, not a command boundary; asynchronous work can cross groups. The authoritative ordering is event sequence plus thread IDs and timestamps. See the [runtime findings](../../docs/reverse-engineering/1.26.60-legacy-reload-path.md) before interpreting names as established API semantics.
+
+The separate opt-in native prototype and lifecycle controller `frida-proton/run-prototype.mjs` are described in [the experimental guide](../../docs/experimental-legacy-reload.md). The working V5 outer native reload is visually confirmed but also refreshes chunks; retain it as a fallback while narrowing JSON UI invalidation. Recovery tools `inspect-prototype.mjs` and `retire-own-prototype.mjs` operate on our own prototype modules; the latter requires exact locally generated COFF symbol/prefix evidence and is not a generic game-call utility.

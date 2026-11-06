@@ -9,7 +9,7 @@
 #include <utility>
 
 namespace conduit {
-bool JsonUiRepository::refresh(const std::filesystem::path& root) {
+bool JsonUiRepository::refresh(const std::filesystem::path& root, bool skipDevelopmentMetadata) {
     JsonUiInfo candidate;
     std::set<std::string> namespaces;
     std::filesystem::path current = root;
@@ -17,7 +17,14 @@ bool JsonUiRepository::refresh(const std::filesystem::path& root) {
         constexpr std::size_t maxFileBytes = 8 * 1024 * 1024;
         constexpr std::size_t maxTreeBytes = 64 * 1024 * 1024;
         std::size_t treeBytes = 0;
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(root)) {
+        for (auto iterator = std::filesystem::recursive_directory_iterator(root);
+             iterator != std::filesystem::recursive_directory_iterator(); ++iterator) {
+            const auto& entry = *iterator;
+            if (skipDevelopmentMetadata && entry.is_directory() &&
+                (entry.path().filename() == ".git" || entry.path().filename() == ".vscode")) {
+                iterator.disable_recursion_pending();
+                continue;
+            }
             current = entry.path();
             if (entry.is_symlink() || !entry.is_regular_file()) { continue; }
             auto extension = current.extension().string();

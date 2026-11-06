@@ -12,14 +12,16 @@ std::filesystem::path pathFromUtf8(std::string_view bytes) {
     return std::filesystem::path(std::u8string(bytes.begin(), bytes.end()));
 }
 }
-Client::Client(const ConduitConfig& config, std::function<void()> onHotkey)
+Client::Client(const ConduitConfig& config, std::function<void()> onHotkey,
+               std::unique_ptr<ReloadBackend> backend, bool skipDevelopmentMetadata)
     : watchDirectory_(std::filesystem::absolute(pathFromUtf8(config.watch_directory_utf8))),
       virtualKey_(config.hotkey_virtual_key),
       pollInterval_(config.poll_interval_ms == 0 ? 50 : config.poll_interval_ms),
       debounce_(config.debounce_ms == 0 ? 150 : config.debounce_ms),
+      skipDevelopmentMetadata_(skipDevelopmentMetadata),
       logger_(std::filesystem::absolute(pathFromUtf8(config.log_file_utf8))),
       onHotkey_(std::move(onHotkey)),
-      reloadManager_(std::make_unique<MinecraftReloadBackend>()) {}
+      reloadManager_(backend ? std::move(backend) : std::make_unique<MinecraftReloadBackend>()) {}
 
 Client::~Client() {
     stop();
@@ -31,8 +33,8 @@ ConduitStatus Client::start() {
         return CONDUIT_ALREADY_RUNNING;
     }
     try {
-        monitor_ = std::make_unique<FileMonitor>(watchDirectory_, debounce_);
-        if (!jsonUi_.refresh(watchDirectory_)) {
+        monitor_ = std::make_unique<FileMonitor>(watchDirectory_, debounce_, skipDevelopmentMetadata_);
+        if (!jsonUi_.refresh(watchDirectory_, skipDevelopmentMetadata_)) {
             logger_.write("error", jsonUi_.info().error);
         }
         hotkey_ = windows::makeHotkey(virtualKey_);
@@ -40,8 +42,13 @@ ConduitStatus Client::start() {
         workerFailed_.store(false);
         worker_ = std::jthread([this](std::stop_token stop) { run(stop); });
         running_ = true;
-        logger_.write("info", "Client started; Minecraft reload backend is unavailable");
+        logger_.write("info", "Client started; reload requests are validated before backend dispatch");
         return CONDUIT_OK;
+    } catch (const std::exception& error) {
+        monitor_.reset();
+        hotkey_.reset();
+        logger_.write("error", std::string("Client start failed: ") + error.what());
+        return CONDUIT_INTERNAL_ERROR;
     } catch (...) {
         monitor_.reset();
         hotkey_.reset();
@@ -123,12 +130,13 @@ void Client::run(std::stop_token stop) noexcept {
                 fileChanges_.fetch_add(request.changes.size());
                 ++attempts_;
                 try {
-                    const bool valid = jsonUi_.refresh(watchDirectory_);
+                    const bool valid = jsonUi_.refresh(watchDirectory_, skipDevelopmentMetadata_);
                     if (!valid) { logger_.write("error", jsonUi_.info().error); }
+                    else { logger_.write("info", "JSON validation completed; backend dispatch permitted"); }
                     switch (valid ? reloadManager_.reload(request) : ReloadResult::Failed) {
                     case ReloadResult::Succeeded:
                         ++successes_;
-                        logger_.write("info", "Reload completed");
+                        logger_.write("info", "Backend operation completed; visual UI refresh is not verified by this counter");
                         break;
                     case ReloadResult::Unsupported:
                         ++unsupported_;

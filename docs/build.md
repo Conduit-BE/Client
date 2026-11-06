@@ -1,5 +1,7 @@
 # DLL foundation: build and test
 
+For the working V5 alpha, enable the separate experimental target using [the alpha guide](experimental-legacy-reload.md). The default foundation target described here retains its unsupported native reload backend.
+
 Conduit requires CMake 3.24+, a C++20 compiler with `std::jthread`, and Windows x64 for the DLL. The portable core tests also run natively on Linux. The D3D12 presentation hook uses pinned [MinHook 1.3.4](https://github.com/TsudaKageyu/minhook). JSON syntax validation uses [nlohmann/json 3.12.0](https://github.com/nlohmann/json/tree/v3.12.0). CMake FetchContent downloads these at configure time unless checkouts exist at `.local/deps/minhook` and `.local/deps/json`.
 
 ## CachyOS / Arch prerequisites
