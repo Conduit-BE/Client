@@ -1,6 +1,10 @@
 // Build-specific opt-in prototype. Evidence and ABI: docs/reverse-engineering/1.26.60-legacy-reload-path.md
 #include "experimental/legacy_reload.hpp"
 #include "core/logger.hpp"
+#include "standalone/initialization.hpp"
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
 #include <windows.h>
 #include <bcrypt.h>
 #include <MinHook.h>
@@ -15,11 +19,14 @@
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 
 namespace conduit::experimental {
 namespace {
 constexpr std::uintptr_t loaderRva = 0x83a190;
 constexpr std::uintptr_t frameRva = 0x879030;
+// Verified natural caller: legacy-prototype-20261106/events.jsonl; versioned reload note.
+constexpr std::uintptr_t frameCallerRva = 0x83274;
 constexpr std::uintptr_t completionRva = 0x8f60b0;
 constexpr std::uintptr_t ownerTableRva = 0xf091b70;
 constexpr std::uintptr_t callableTableRva = 0xf094230;
@@ -32,7 +39,8 @@ struct State {
     std::mutex mutex;
     std::condition_variable wake;
     bool enabled = false, installed = false, pending = false, busy = false, faulted = false;
-    bool automatic = false, resourceFallback = false;
+    bool automatic = false, resourceFallback = false, automaticFrame = false;
+    standalone::FrameAffinity affinity;
     unsigned resourceFlag = 0;
     std::unique_ptr<Logger> diagnostics;
     std::uintptr_t owner = 0, base = 0;
@@ -74,7 +82,8 @@ bool validOwner(void* owner) noexcept {
 void observeLoader(void* owner) {
     {
         std::lock_guard lock(state.mutex);
-        if (state.enabled && validOwner(owner)) {
+        if (state.enabled && validOwner(owner) && (!state.automaticFrame ||
+            (state.owner == reinterpret_cast<std::uintptr_t>(owner) && state.gameThread == GetCurrentThreadId()))) {
             state.owner = reinterpret_cast<std::uintptr_t>(owner);
             state.gameThread = GetCurrentThreadId();
             state.busy = true;
@@ -108,16 +117,34 @@ void observeCompletion(void* callable, void* result) {
     state.wake.notify_all();
 }
 void onFrameBoundary(void* currentOwner) {
+#ifdef _MSC_VER
+    const auto caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
+#else
+    const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
+#endif
     state.frame(currentOwner);
     {
         std::lock_guard lock(state.mutex);
-        if (state.enabled && !state.owner && state.observedThread == GetCurrentThreadId() && validOwner(currentOwner)) {
+        if (state.enabled && state.automaticFrame && !state.owner && !state.faulted) {
+            const bool ready = state.affinity.observe(reinterpret_cast<std::uintptr_t>(currentOwner),
+                GetCurrentThreadId(), caller == state.base + frameCallerRva && validOwner(currentOwner));
+            if (state.affinity.conflicted()) {
+                state.faulted = true;
+                diagnostic("automatic_affinity_conflict no_dispatch_until_restart");
+            } else if (ready) {
+                state.owner = reinterpret_cast<std::uintptr_t>(currentOwner);
+                state.gameThread = GetCurrentThreadId();
+                diagnostic("automatic_backend_armed verified_frame_caller=0x83274 resource_entry=0x873a20 flag=1");
+            }
+        }
+        if (state.enabled && !state.automaticFrame && !state.owner && state.observedThread == GetCurrentThreadId() && validOwner(currentOwner)) {
             state.owner = reinterpret_cast<std::uintptr_t>(currentOwner);
             state.gameThread = GetCurrentThreadId();
             diagnostic("owner_acquired_from_current_frame after_live_reload_thread_observation");
         }
         // Reacquire from this natural call; never dereference a cached heap pointer.
-        if (!state.enabled || state.faulted || !state.pending || state.busy ||
+        if ((state.automaticFrame && caller != state.base + frameCallerRva) ||
+            !state.enabled || state.faulted || !state.pending || state.busy ||
             state.gameThread != GetCurrentThreadId() ||
             state.owner != reinterpret_cast<std::uintptr_t>(currentOwner) || !validOwner(currentOwner)) return;
         state.pending = false;
@@ -163,7 +190,7 @@ void verifyImage() {
     constexpr std::array<UCHAR, 32> expected{0x1d,0x6a,0xd5,0xc2,0x17,0xe9,0x30,0x54,0x42,0xc3,0x53,0xba,0x3e,0x9b,0xca,0x62,0x3d,0x57,0x19,0x13,0x4e,0x1c,0xc8,0xa8,0x4f,0xb1,0x23,0x3f,0x71,0x45,0xe8,0x5c};
     if (!ok || digest != expected) throw std::runtime_error("Requires exact verified Bedrock 1.26.60.5 image");
 }
-void install(const std::filesystem::path& diagnosticLog) {
+void install(const std::filesystem::path& diagnosticLog, bool automaticFrame) {
     std::unique_lock lock(state.mutex);
     if (state.enabled || state.installed) throw std::runtime_error("Prototype is single-use per process; restart to re-enable");
     verifyImage();
@@ -206,16 +233,23 @@ void install(const std::filesystem::path& diagnosticLog) {
         MH_DisableHook(MH_ALL_HOOKS);
         throw std::runtime_error("Native hook activation failed");
     }
+    state.automaticFrame = automaticFrame;
+    if (automaticFrame) { state.resourceFallback = true; state.resourceFlag = 1; }
     state.enabled = true;
     diagnostic("backend_enabled waiting_for_live_owner_affinity");
 }
 class LegacyReloadBackend final : public ReloadBackend {
 public:
-    explicit LegacyReloadBackend(const std::filesystem::path& diagnosticLog) { install(diagnosticLog); }
+    explicit LegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame) { install(diagnosticLog, automaticFrame); }
     ~LegacyReloadBackend() override { disableLegacyReload(); }
     ReloadResult reload(const ReloadRequest& request) override {
         std::unique_lock lock(state.mutex);
-        if (!state.enabled || state.faulted || !state.owner || !state.gameThread) return ReloadResult::Unsupported;
+        if (!state.enabled || state.faulted || !state.owner || !state.gameThread) {
+            if (request.hotkey || request.explicitRequest) diagnostic("native_reload_not_ready enabled=" +
+                std::to_string(state.enabled) + " armed=" + std::to_string(state.owner != 0) +
+                " faulted=" + std::to_string(state.faulted));
+            return ReloadResult::Unsupported;
+        }
         if (!request.hotkey && !request.explicitRequest && !state.automatic) return ReloadResult::Unsupported;
         if (state.busy || state.pending) return ReloadResult::Failed;
         const auto generation = ++state.generation;
@@ -231,7 +265,7 @@ public:
     }
 };
 }
-std::unique_ptr<ReloadBackend> makeLegacyReloadBackend(const std::filesystem::path& diagnosticLog) { return std::make_unique<LegacyReloadBackend>(diagnosticLog); }
+std::unique_ptr<ReloadBackend> makeLegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame) { return std::make_unique<LegacyReloadBackend>(diagnosticLog, automaticFrame); }
 bool armFromObservedThread(unsigned processId, unsigned threadId) {
     if (processId != GetCurrentProcessId() || !threadId) return false;
     HANDLE thread = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, threadId);

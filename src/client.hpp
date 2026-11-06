@@ -20,7 +20,8 @@ namespace conduit {
 class Client {
 public:
     explicit Client(const ConduitConfig& config, std::function<void()> onHotkey = {},
-                    std::unique_ptr<ReloadBackend> backend = {}, bool skipDevelopmentMetadata = false);
+                    std::unique_ptr<ReloadBackend> backend = {}, bool skipDevelopmentMetadata = false,
+                    bool monitorChanges = true);
     ~Client();
     Client(const Client&) = delete;
     Client& operator=(const Client&) = delete;
@@ -36,6 +37,7 @@ private:
     const std::chrono::milliseconds pollInterval_;
     const std::chrono::milliseconds debounce_;
     const bool skipDevelopmentMetadata_;
+    const bool monitorChanges_;
     Logger logger_;
     std::function<void()> onHotkey_;
     ReloadManager reloadManager_;

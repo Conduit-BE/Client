@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <string>
 namespace conduit::experimental {
-std::unique_ptr<ReloadBackend> makeLegacyReloadBackend(const std::filesystem::path& diagnosticLog);
+std::unique_ptr<ReloadBackend> makeLegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame = false);
 bool setResourceFallback(unsigned observedFlag);
 bool armFromObservedThread(unsigned processId, unsigned threadId);
 bool retireLegacyReloadHooks() noexcept;

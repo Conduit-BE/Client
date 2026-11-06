@@ -13,12 +13,13 @@ std::filesystem::path pathFromUtf8(std::string_view bytes) {
 }
 }
 Client::Client(const ConduitConfig& config, std::function<void()> onHotkey,
-               std::unique_ptr<ReloadBackend> backend, bool skipDevelopmentMetadata)
+               std::unique_ptr<ReloadBackend> backend, bool skipDevelopmentMetadata, bool monitorChanges)
     : watchDirectory_(std::filesystem::absolute(pathFromUtf8(config.watch_directory_utf8))),
       virtualKey_(config.hotkey_virtual_key),
       pollInterval_(config.poll_interval_ms == 0 ? 50 : config.poll_interval_ms),
       debounce_(config.debounce_ms == 0 ? 150 : config.debounce_ms),
       skipDevelopmentMetadata_(skipDevelopmentMetadata),
+      monitorChanges_(monitorChanges),
       logger_(std::filesystem::absolute(pathFromUtf8(config.log_file_utf8))),
       onHotkey_(std::move(onHotkey)),
       reloadManager_(backend ? std::move(backend) : std::make_unique<MinecraftReloadBackend>()) {}
@@ -33,8 +34,10 @@ ConduitStatus Client::start() {
         return CONDUIT_ALREADY_RUNNING;
     }
     try {
-        monitor_ = std::make_unique<FileMonitor>(watchDirectory_, debounce_, skipDevelopmentMetadata_);
-        if (!jsonUi_.refresh(watchDirectory_, skipDevelopmentMetadata_)) {
+        if (monitorChanges_) {
+            monitor_ = std::make_unique<FileMonitor>(watchDirectory_, debounce_, skipDevelopmentMetadata_);
+        }
+        if (monitorChanges_ && !jsonUi_.refresh(watchDirectory_, skipDevelopmentMetadata_)) {
             logger_.write("error", jsonUi_.info().error);
         }
         hotkey_ = windows::makeHotkey(virtualKey_);
@@ -114,7 +117,7 @@ void Client::run(std::stop_token stop) noexcept {
                 nextDiagnostic = std::chrono::steady_clock::now() + std::chrono::seconds(15);
             }
             try {
-                request.changes = monitor_->poll(FileMonitor::Clock::now());
+                if (monitor_) request.changes = monitor_->poll(FileMonitor::Clock::now());
                 monitorErrorReported = false;
             } catch (...) {
                 ++monitorErrors_;
