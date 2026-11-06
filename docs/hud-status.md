@@ -1,5 +1,7 @@
 # D3D12 HUD status
 
+Historical foundation renderer only. The current experimental standalone F3 overlay uses a separate layered-window path; see [debug overlay](debug-overlay.md). The older Ctrl+R/unsupported-backend statements below do not describe the v0.2.0 standalone target.
+
 Conduit contains a small D3D12 renderer and DXGI presentation hooks. It draws a dark rectangle with `Conduit Client Loaded` in the top-right of a swap chain, using its own command list and a built-in bitmap font. It does not depend on Minecraft JSON UI or a separate desktop window.
 
 The renderer and hook passed independent Wine tests that read back dark panel and bright text pixels from a D3D12 swap chain. **Visibility in Minecraft has not yet been confirmed.** The first BedrockOnLinux test showed no panel. Its log confirmed DLL startup and hook installation, but no successful frame submission. The next build adds counters for intercepted Presents, command queue submissions, device lookup failures, and unmatched queues. Those counters appear in `conduit.log` every 15 seconds and should identify the integration gap.

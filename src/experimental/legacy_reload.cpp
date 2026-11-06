@@ -20,6 +20,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <vector>
+#include <limits>
 
 namespace conduit::experimental {
 namespace {
@@ -39,6 +40,13 @@ constexpr std::uintptr_t clientOwnerGetterRva = 0x1a58900;
 constexpr std::uintptr_t clientCacheGetterRva = 0x56f040;
 constexpr std::uintptr_t uiWaitRva = 0xde790;
 using UiReloadCallback = void (*)(void*, void*, void*);
+// Observed natural primary-client stack name accessor; exact ABI and callers:
+// docs/reverse-engineering/1.26.60-native-screen.md
+constexpr std::uintptr_t screenNameRva = 0x56d000;
+constexpr std::uintptr_t sceneStackTableRva = 0xf0829b0;
+constexpr std::uint64_t maximumNativeStringCapacity = 1024 * 1024;
+constexpr std::uintptr_t primaryScreenNameCallerRva = 0x65b0119;
+using ScreenNameMethod = void* (*)(void*, void*);
 using OwnerMethod = void (*)(void*);
 using CompletionMethod = void (*)(void*, void*);
 using ResourceMethod = void (*)(void*, void*, std::uint32_t);
@@ -55,6 +63,9 @@ struct State {
     std::uintptr_t owner = 0, base = 0;
     DWORD gameThread = 0, observedThread = 0;
     std::uint64_t submitted = 0, completed = 0, natural = 0, generation = 0, finished = 0;
+    ScreenMetrics screenMetrics;
+    std::atomic<DWORD> screenThread{0};
+    ScreenNameMethod screenName = nullptr;
     OwnerMethod loader = nullptr, frame = nullptr;
     CompletionMethod completion = nullptr;
 };
@@ -115,6 +126,147 @@ std::uintptr_t validatedUiContext(void* currentOwner) noexcept {
     std::memcpy(&sentinel, reinterpret_cast<void*>(tree + 0x19), 1);
     if (sentinel != 1 || !pointerAt(tree) || !pointerAt(tree + 8) || !pointerAt(tree + 0x10)) return 0;
     return client;
+}
+bool copyMemory(const void* source, void* target, std::size_t size) noexcept {
+    SIZE_T copied{};
+    return source && ReadProcessMemory(GetCurrentProcess(), source, target, size, &copied) && copied == size;
+}
+// Exact-build ownership/traversal evidence: docs/reverse-engineering/1.26.60-ui-controls.md.
+constexpr std::uintptr_t legacySceneTableRva = 0xf20ec60;
+constexpr std::uintptr_t visualTreeTableRva = 0xf2094c0;
+constexpr std::size_t maximumControlEdges = 32768;
+constexpr auto controlSampleInterval = std::chrono::seconds(1);
+constexpr auto controlSampleBudget = std::chrono::milliseconds(5);
+ControlCounter<8192, maximumControlEdges> controlCounter; // Only the verified UI thread uses scratch.
+struct NativeVector { std::uintptr_t begin, end, capacity; };
+struct SharedControl { std::uintptr_t object, owner; };
+static_assert(sizeof(SharedControl) == 16);
+bool readAt(std::uintptr_t object, std::size_t offset, void* output, std::size_t size) noexcept {
+    return object && object <= std::numeric_limits<std::uintptr_t>::max()-offset &&
+        copyMemory(reinterpret_cast<const void*>(object+offset), output, size);
+}
+std::uintptr_t readPointerAt(std::uintptr_t object, std::size_t offset = 0) noexcept {
+    std::uintptr_t result{};
+    return readAt(object, offset, &result, sizeof(result)) ? result : 0;
+}
+struct CollectedControls { ControlCount elements; std::uint32_t micros = 0; };
+CollectedControls collectActiveControls(void* stack) noexcept {
+    static std::atomic_flag collecting = ATOMIC_FLAG_INIT;
+    if (collecting.test_and_set(std::memory_order_acquire)) return {};
+    struct Release { std::atomic_flag& flag; ~Release() { flag.clear(std::memory_order_release); } } release{collecting};
+    const auto start = ScreenMetrics::Clock::now();
+    const auto deadline = start + controlSampleBudget;
+    const auto stackAddress = reinterpret_cast<std::uintptr_t>(stack);
+    NativeVector scenes{};
+    if (!readAt(stackAddress, 0x18, &scenes, sizeof(scenes)) || !scenes.begin ||
+        scenes.end <= scenes.begin || scenes.capacity < scenes.end ||
+        (scenes.end-scenes.begin)%32 || scenes.end-scenes.begin > 128*32) return {};
+    const auto scene = readPointerAt(scenes.end-24);
+    // Reject HBUI and every unverified scene implementation, rather than reading a DOM as controls.
+    if (readPointerAt(scene) != state.base+legacySceneTableRva) return {};
+    const auto view = readPointerAt(scene, 0x40), tree = readPointerAt(view, 0x50);
+    if (readPointerAt(tree) != state.base+visualTreeTableRva) return {};
+    SharedControl root{};
+    if (!readAt(tree, 8, &root, sizeof(root)) || !root.object || !root.owner) return {};
+    const auto stopped = [&] { return ScreenMetrics::Clock::now() >= deadline; };
+    const auto result = controlCounter.count(root.object, [&](std::uintptr_t node, auto&& emit) noexcept {
+        NativeVector children{};
+        if (!readAt(node, 0x98, &children, sizeof(children)) || children.end < children.begin ||
+            children.capacity < children.end || (children.end-children.begin)%sizeof(SharedControl))
+            return ChildReadStatus::Unavailable;
+        const auto total = (children.end-children.begin)/sizeof(SharedControl);
+        if (total > maximumControlEdges) return ChildReadStatus::Limited;
+        std::array<SharedControl, 32> chunk{};
+        for (std::size_t offset = 0; offset < total;) {
+            if (stopped()) return ChildReadStatus::Limited;
+            const auto size = std::min(chunk.size(), static_cast<std::size_t>(total-offset));
+            if (!readAt(children.begin, offset*sizeof(SharedControl), chunk.data(), size*sizeof(SharedControl)))
+                return ChildReadStatus::Unavailable;
+            for (std::size_t index=0; index<size; ++index) {
+                if (!chunk[index].object || !chunk[index].owner) return ChildReadStatus::Unavailable;
+                if (!emit(chunk[index].object)) return ChildReadStatus::Limited;
+            }
+            offset += size;
+        }
+        // A concurrent vector edit invalidates the observation instead of publishing a mixed total.
+        NativeVector after{};
+        if (!readAt(node, 0x98, &after, sizeof(after)) ||
+            after.begin != children.begin || after.end != children.end || after.capacity != children.capacity)
+            return ChildReadStatus::Unavailable;
+        return ChildReadStatus::Complete;
+    }, stopped);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(ScreenMetrics::Clock::now()-start).count();
+    NativeVector after{};
+    SharedControl afterRoot{};
+    if (!readAt(stackAddress, 0x18, &after, sizeof(after)) || after.begin != scenes.begin || after.end != scenes.end ||
+        readPointerAt(after.end-24) != scene || readPointerAt(view, 0x50) != tree ||
+        !readAt(tree, 8, &afterRoot, sizeof(afterRoot)) || afterRoot.object != root.object || afterRoot.owner != root.owner)
+        return {};
+    return {result, static_cast<std::uint32_t>(std::max<std::int64_t>(0, elapsed))};
+}
+void* observeScreenName(void* stack, void* output) {
+#ifdef _MSC_VER
+    const auto caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
+#else
+    const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
+#endif
+    // No diagnostic mutex is held across the original native call. Its output is
+    // caller-owned and remains alive until this wrapper returns to that caller.
+    void* result = state.screenName(stack, output);
+    if (caller != state.base + primaryScreenNameCallerRva ||
+        state.screenThread.load(std::memory_order_acquire) != GetCurrentThreadId()) return result;
+    static thread_local auto lastSample = ScreenMetrics::Clock::time_point{};
+    const auto now = ScreenMetrics::Clock::now();
+    if (now-lastSample < std::chrono::milliseconds(250)) return result;
+    lastSample = now;
+    // Private MSVC string layout verified in the exact native accessor. Never
+    // construct/destroy a game string with this DLL's C++ runtime.
+    struct NativeString { std::array<char, 16> storage; std::uint64_t size, capacity; };
+    static_assert(sizeof(NativeString) == 32);
+    NativeString value{};
+    std::uintptr_t table{};
+    if (result != output || !copyMemory(stack, &table, sizeof(table)) || table != state.base + sceneStackTableRva ||
+        !copyMemory(output, &value, sizeof(value)) || value.size == 0 ||
+        value.size > ScreenMetrics::maximumNameBytes || value.size > value.capacity ||
+        value.capacity > maximumNativeStringCapacity || (value.capacity < 16 && value.size > 15)) {
+        state.screenMetrics.invalidate();
+        return result;
+    }
+    ScreenMetrics::Name name{};
+    if (value.capacity < 16) {
+        std::memcpy(name.data(), value.storage.data(), static_cast<std::size_t>(value.size));
+    } else {
+        const char* text{};
+        std::memcpy(&text, value.storage.data(), sizeof(text));
+        if (!copyMemory(text, name.data(), static_cast<std::size_t>(value.size))) {
+            state.screenMetrics.invalidate(); return result;
+        }
+    }
+    // Retain copied names/counts only, never a scene/root/control pointer between callbacks.
+    static thread_local ScreenMetrics::Name countedName{};
+    static thread_local auto countedAt = ScreenMetrics::Clock::time_point{};
+    static thread_local CollectedControls controls{};
+    const auto currentName = std::string_view(name.data(), static_cast<std::size_t>(value.size));
+    if (now-countedAt >= controlSampleInterval || currentName != std::string_view(countedName.data())) {
+        controls = collectActiveControls(stack);
+        countedName = name;
+        countedAt = now;
+        // Bounded first-screen cost evidence only; never emit per-frame/per-control logs.
+        static thread_local std::array<ScreenMetrics::Name, 4> loggedNames{};
+        static thread_local std::size_t logged = 0;
+        bool seen = false;
+        for (std::size_t index=0; index<logged; ++index)
+            seen = seen || currentName == std::string_view(loggedNames[index].data());
+        if (!seen && logged < loggedNames.size() && controls.elements.status != ControlCountStatus::Unavailable) {
+            loggedNames[logged++] = name;
+            diagnostic("native_controls_sample screen=" + std::string(currentName) + " count=" +
+                std::to_string(controls.elements.count) + " complete=" +
+                std::to_string(controls.elements.status == ControlCountStatus::Complete) + " collection_us=" +
+                std::to_string(controls.micros));
+        }
+    }
+    state.screenMetrics.publish(currentName, now, controls.elements, controls.micros);
+    return result;
 }
 void observeLoader(void* owner) {
     {
@@ -180,6 +332,14 @@ void onFrameBoundary(void* currentOwner) {
             state.owner = reinterpret_cast<std::uintptr_t>(currentOwner);
             state.gameThread = GetCurrentThreadId();
             diagnostic("owner_acquired_from_current_frame after_live_reload_thread_observation");
+        }
+        if (state.enabled && !state.faulted && state.automaticFrame &&
+            caller == state.base + frameCallerRva && state.gameThread == GetCurrentThreadId() &&
+            state.owner == reinterpret_cast<std::uintptr_t>(currentOwner)) {
+            state.screenThread.store(pointerAt(reinterpret_cast<std::uintptr_t>(currentOwner) + 0x9d8) == 1
+                ? GetCurrentThreadId() : 0, std::memory_order_release);
+        } else {
+            state.screenThread.store(0, std::memory_order_release);
         }
         // Reacquire from this natural call; never dereference a cached heap pointer.
         if ((state.automaticFrame && caller != state.base + frameCallerRva) ||
@@ -289,7 +449,7 @@ void install(const std::filesystem::path& diagnosticLog, bool automaticFrame, Le
     state.enabled = false;
     lock.unlock();
     // Never hold our state mutex while MinHook suspends/resumes other threads.
-    // This DLL has its own MinHook instance and owns exactly these three hooks.
+    // Activate required reload hooks before installing optional diagnostics.
     const auto activation = MH_EnableHook(MH_ALL_HOOKS);
     lock.lock();
     if (activation != MH_OK) {
@@ -303,6 +463,21 @@ void install(const std::filesystem::path& diagnosticLog, bool automaticFrame, Le
     if (automaticFrame) { state.resourceFallback = true; state.resourceFlag = 1; }
     state.enabled = true;
     diagnostic("backend_enabled waiting_for_live_owner_affinity");
+    lock.unlock();
+    constexpr std::array<unsigned char, 8> screenPrefix{0x56,0x48,0x83,0xec,0x20,0x48,0x8b,0x41};
+    const bool screenCompatible = !std::memcmp(reinterpret_cast<void*>(state.base + screenNameRva),
+        screenPrefix.data(), screenPrefix.size());
+    if (automaticFrame && screenCompatible &&
+        MH_CreateHook(reinterpret_cast<void*>(state.base + screenNameRva), reinterpret_cast<void*>(&observeScreenName),
+            reinterpret_cast<void**>(&state.screenName)) == MH_OK) {
+        if (MH_EnableHook(reinterpret_cast<void*>(state.base + screenNameRva)) == MH_OK) {
+            diagnostic("native_screen_observer_installed primary_caller=0x65b0119 sample_ms=250");
+        } else {
+            diagnostic("native_screen_observer_enable_failed reload_hooks_preserved");
+        }
+    } else {
+        diagnostic("native_screen_observer_unavailable reload_hooks_preserved");
+    }
 }
 class LegacyReloadBackend final : public ReloadBackend {
 public:
@@ -331,6 +506,7 @@ public:
     }
 };
 }
+ScreenMetrics& nativeScreenMetrics() noexcept { return state.screenMetrics; }
 std::unique_ptr<ReloadBackend> makeLegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame, LegacyReloadMode mode) { return std::make_unique<LegacyReloadBackend>(diagnosticLog, automaticFrame, mode); }
 bool armFromObservedThread(unsigned processId, unsigned threadId) {
     if (processId != GetCurrentProcessId() || !threadId) return false;
@@ -361,6 +537,8 @@ bool setResourceFallback(unsigned observedFlag) {
 void disableLegacyReload() noexcept {
     std::lock_guard lock(state.mutex);
     state.enabled = false;
+    state.screenThread.store(0, std::memory_order_release);
+    state.screenMetrics.invalidate();
     state.pending = false;
     state.wake.notify_all();
 }
