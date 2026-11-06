@@ -1,10 +1,12 @@
 #pragma once
 #include "core/reload_manager.hpp"
+#include "experimental/legacy_reload_mode.hpp"
 #include <memory>
 #include <filesystem>
 #include <string>
 namespace conduit::experimental {
-std::unique_ptr<ReloadBackend> makeLegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame = false);
+std::unique_ptr<ReloadBackend> makeLegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame = false,
+    LegacyReloadMode mode = LegacyReloadMode::FullResourceReload);
 bool setResourceFallback(unsigned observedFlag);
 bool armFromObservedThread(unsigned processId, unsigned threadId);
 bool retireLegacyReloadHooks() noexcept;

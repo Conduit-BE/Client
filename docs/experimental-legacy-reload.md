@@ -1,4 +1,6 @@
-# Experimental legacy JSON UI reload prototype
+# Historical V5 experimental reload and Frida development workflow
+
+For normal **v0.2.0-beta JSON UI-only reload**, use [standalone installation](standalone-initialization.md). This historical guide preserves the broader V5/Frida workflow for development and fallback investigation; normal use needs no server/controller.
 
 Target: exact Windows x64 Bedrock 1.26.60.5 image (package1.26.6005.0). Linux/BedrockOnLinux/Proton is supported through the documented Windows Frida server transport. This is a separate DLL; the stable ConduitClient backend remains unsupported by default. **V5 is human-confirmed to refresh edited legacy JSON UI with Ctrl+R, but it also reloads chunks. JSON UI-only reload is not achieved. A completion counter alone does not prove a refreshed screen.** Roughly one-second freezes can occur and player skins may become invisible.
 

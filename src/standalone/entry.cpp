@@ -55,7 +55,10 @@ DWORD WINAPI initialize(LPVOID) noexcept {
         if (watch.empty() || !pack.is_absolute() || !std::filesystem::is_directory(pack / L"ui") ||
             !std::filesystem::is_regular_file(pack / L"manifest.json"))
             throw std::runtime_error("resourcePackPath must be an absolute existing pack root containing ui and manifest.json");
-        auto backend = conduit::experimental::makeLegacyReloadBackend(root / L"native-stages.log", true);
+        const auto modeName = settings.value("reloadMode", std::string("FullResourceReload"));
+        const auto mode = conduit::experimental::parseLegacyReloadMode(modeName);
+        log->write("info", "Selected reload mode: " + modeName);
+        auto backend = conduit::experimental::makeLegacyReloadBackend(root / L"native-stages.log", true, mode);
         const auto clientLog = utf8(root / L"client.log");
         ConduitConfig config{sizeof(ConduitConfig), CONDUIT_API_VERSION, watch.c_str(), clientLog.c_str(),
                              CONDUIT_HOTKEY_DEFAULT, 30, 150};

@@ -32,6 +32,13 @@ constexpr std::uintptr_t ownerTableRva = 0xf091b70;
 constexpr std::uintptr_t callableTableRva = 0xf094230;
 // Outer natural reload: preserves the three observed inputs and performs invalidation before task submission.
 constexpr std::uintptr_t resourceReloadRva = 0x873a20;
+// Complete native button.reload_ui_definitions path; see versioned UI-only evidence.
+constexpr std::uintptr_t uiReloadCallbackRva = 0xf203e0;
+constexpr std::uintptr_t clientTableRva = 0xf2b9330;
+constexpr std::uintptr_t clientOwnerGetterRva = 0x1a58900;
+constexpr std::uintptr_t clientCacheGetterRva = 0x56f040;
+constexpr std::uintptr_t uiWaitRva = 0xde790;
+using UiReloadCallback = void (*)(void*, void*, void*);
 using OwnerMethod = void (*)(void*);
 using CompletionMethod = void (*)(void*, void*);
 using ResourceMethod = void (*)(void*, void*, std::uint32_t);
@@ -42,6 +49,8 @@ struct State {
     bool automatic = false, resourceFallback = false, automaticFrame = false;
     standalone::FrameAffinity affinity;
     unsigned resourceFlag = 0;
+    LegacyReloadMode mode = LegacyReloadMode::FullResourceReload;
+    UiReloadCompletion uiCompletion;
     std::unique_ptr<Logger> diagnostics;
     std::uintptr_t owner = 0, base = 0;
     DWORD gameThread = 0, observedThread = 0;
@@ -79,6 +88,34 @@ bool validOwner(void* owner) noexcept {
            pointerAt(pointerAt(service) + 8) == state.base + 0xda940 &&
            pointerAt(context) == state.base + 0xf0f9500;
 }
+bool liveGuard(std::uintptr_t address) noexcept {
+    if (!readable(reinterpret_cast<void*>(address), 1)) return false;
+    unsigned char value{};
+    std::memcpy(&value, reinterpret_cast<void*>(address), 1);
+    return value != 0;
+}
+std::uintptr_t validatedUiContext(void* currentOwner) noexcept {
+    const auto owner = reinterpret_cast<std::uintptr_t>(currentOwner);
+    // Native completion traverses this exact map and passes node+0x38 as RCX.
+    // Restrict this first experiment to one client, rather than guessing a split-screen context.
+    if (pointerAt(owner + 0x9d8) != 1) return 0;
+    const auto head = pointerAt(owner + 0x9d0), node = pointerAt(head);
+    if (!head || !node || node == head) return 0;
+    const auto client = pointerAt(node + 0x38), table = pointerAt(client);
+    if (table != state.base + clientTableRva || pointerAt(table + 0x270) != state.base + clientOwnerGetterRva ||
+        pointerAt(table + 0x790) != state.base + clientCacheGetterRva || pointerAt(client + 0x1c8) != owner ||
+        !liveGuard(pointerAt(client + 8)) || !pointerAt(client + 0x10)) return 0;
+    const auto service = pointerAt(owner + 0x818), serviceTable = pointerAt(service);
+    if (pointerAt(state.base + ownerTableRva + 0x68) != state.base + 0x8ac660 ||
+        pointerAt(serviceTable + 0x28) != state.base + uiWaitRva ||
+        !liveGuard(pointerAt(service + 0x18)) || !pointerAt(service + 0x28)) return 0;
+    const auto cache = pointerAt(client + 0x230), tree = pointerAt(cache + 0x10);
+    if (!readable(reinterpret_cast<void*>(cache), 0x20) || !readable(reinterpret_cast<void*>(tree), 0x20)) return 0;
+    unsigned char sentinel{};
+    std::memcpy(&sentinel, reinterpret_cast<void*>(tree + 0x19), 1);
+    if (sentinel != 1 || !pointerAt(tree) || !pointerAt(tree + 8) || !pointerAt(tree + 0x10)) return 0;
+    return client;
+}
 void observeLoader(void* owner) {
     {
         std::lock_guard lock(state.mutex);
@@ -106,10 +143,11 @@ void observeCompletion(void* callable, void* result) {
         std::lock_guard lock(state.mutex);
         if (state.enabled && matchingTable && captured == state.owner &&
             GetCurrentThreadId() == state.gameThread) {
-            state.busy = false;
+            state.busy = state.uiCompletion.actionInFlight();
+            if (state.mode == LegacyReloadMode::LegacyJsonUiOnly) state.uiCompletion.loaderCompleted();
             if (state.submitted > state.completed) {
                 state.completed = state.submitted;
-                state.finished = state.generation;
+                if (!state.uiCompletion.actionInFlight()) state.finished = state.generation;
                 diagnostic("native_UI_completion_returned visual_refresh=UNVERIFIED");
             }
         }
@@ -123,6 +161,7 @@ void onFrameBoundary(void* currentOwner) {
     const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
 #endif
     state.frame(currentOwner);
+    std::uintptr_t uiContext = 0;
     {
         std::lock_guard lock(state.mutex);
         if (state.enabled && state.automaticFrame && !state.owner && !state.faulted) {
@@ -134,7 +173,7 @@ void onFrameBoundary(void* currentOwner) {
             } else if (ready) {
                 state.owner = reinterpret_cast<std::uintptr_t>(currentOwner);
                 state.gameThread = GetCurrentThreadId();
-                diagnostic("automatic_backend_armed verified_frame_caller=0x83274 resource_entry=0x873a20 flag=1");
+                diagnostic("automatic_backend_armed verified_frame_caller=0x83274 mode=" + std::string(state.mode == LegacyReloadMode::LegacyJsonUiOnly ? "LegacyJsonUiOnly callback=0xf203e0" : "FullResourceReload resource_entry=0x873a20 flag=1"));
             }
         }
         if (state.enabled && !state.automaticFrame && !state.owner && state.observedThread == GetCurrentThreadId() && validOwner(currentOwner)) {
@@ -147,14 +186,36 @@ void onFrameBoundary(void* currentOwner) {
             !state.enabled || state.faulted || !state.pending || state.busy ||
             state.gameThread != GetCurrentThreadId() ||
             state.owner != reinterpret_cast<std::uintptr_t>(currentOwner) || !validOwner(currentOwner)) return;
+        if (state.mode == LegacyReloadMode::LegacyJsonUiOnly) {
+            uiContext = validatedUiContext(currentOwner);
+            if (!uiContext) {
+                state.pending = false; state.faulted = true;
+                diagnostic("targeted_context_guard_failed no_native_call");
+                state.wake.notify_all(); return;
+            }
+            if (!state.uiCompletion.begin()) return;
+        }
         state.pending = false;
         state.busy = true;
         ++state.submitted;
-        diagnostic("native_reload_dispatched mode=" + std::string(state.resourceFallback ? "resource_rebuild" : "legacy_ui"));
+        diagnostic("native_reload_dispatched mode=" + std::string(state.mode == LegacyReloadMode::LegacyJsonUiOnly ? "legacy_json_ui_only" : state.resourceFallback ? "resource_rebuild" : "legacy_ui"));
     }
     // Single RCX method with ignored return, independently confirmed from the original code.
     injectedLoader = true;
-    if (state.resourceFallback) {
+    if (uiContext) {
+        diagnostic("native_ui_button_callback_entered");
+        // RCX/RDX are unused by this exact callback. It constructs/releases its own
+        // guard/control wrapper from R8, then runs the complete native UI action.
+        reinterpret_cast<UiReloadCallback>(state.base + uiReloadCallbackRva)(nullptr, nullptr,
+            reinterpret_cast<void*>(uiContext));
+        {
+            std::lock_guard lock(state.mutex);
+            state.uiCompletion.actionReturned();
+            if (state.uiCompletion.ready()) { state.finished = state.generation; state.busy = false; }
+            diagnostic("native_ui_button_callback_returned visual_refresh=UNVERIFIED resource_isolation=UNVERIFIED");
+        }
+        state.wake.notify_all();
+    } else if (state.resourceFallback) {
         const auto context = pointerAt(reinterpret_cast<std::uintptr_t>(currentOwner) + 0x228);
         const auto reloadResources = reinterpret_cast<ResourceMethod>(state.base + resourceReloadRva);
         reloadResources(currentOwner, reinterpret_cast<void*>(context), state.resourceFlag);
@@ -190,7 +251,7 @@ void verifyImage() {
     constexpr std::array<UCHAR, 32> expected{0x1d,0x6a,0xd5,0xc2,0x17,0xe9,0x30,0x54,0x42,0xc3,0x53,0xba,0x3e,0x9b,0xca,0x62,0x3d,0x57,0x19,0x13,0x4e,0x1c,0xc8,0xa8,0x4f,0xb1,0x23,0x3f,0x71,0x45,0xe8,0x5c};
     if (!ok || digest != expected) throw std::runtime_error("Requires exact verified Bedrock 1.26.60.5 image");
 }
-void install(const std::filesystem::path& diagnosticLog, bool automaticFrame) {
+void install(const std::filesystem::path& diagnosticLog, bool automaticFrame, LegacyReloadMode mode) {
     std::unique_lock lock(state.mutex);
     if (state.enabled || state.installed) throw std::runtime_error("Prototype is single-use per process; restart to re-enable");
     verifyImage();
@@ -203,6 +264,10 @@ void install(const std::filesystem::path& diagnosticLog, bool automaticFrame) {
         std::memcmp(reinterpret_cast<void*>(state.base + frameRva), framePrefix.data(), framePrefix.size()) ||
         std::memcmp(reinterpret_cast<void*>(state.base + completionRva), completionPrefix.data(), completionPrefix.size()))
         throw std::runtime_error("Code is already hooked or incompatible; detach diagnostics first");
+    constexpr std::array<unsigned char, 7> uiCallbackPrefix{0x55,0x56,0x57,0x48,0x83,0xec,0x40};
+    if (mode == LegacyReloadMode::LegacyJsonUiOnly &&
+        std::memcmp(reinterpret_cast<void*>(state.base + uiReloadCallbackRva), uiCallbackPrefix.data(), uiCallbackPrefix.size()))
+        throw std::runtime_error("Native UI callback is already hooked or incompatible");
     const auto initialized = MH_Initialize();
     if (initialized != MH_OK) throw std::runtime_error("Cannot initialize private hook library");
     const std::array<std::uintptr_t, 3> rvas{loaderRva, frameRva, completionRva};
@@ -233,6 +298,7 @@ void install(const std::filesystem::path& diagnosticLog, bool automaticFrame) {
         MH_DisableHook(MH_ALL_HOOKS);
         throw std::runtime_error("Native hook activation failed");
     }
+    state.mode = mode;
     state.automaticFrame = automaticFrame;
     if (automaticFrame) { state.resourceFallback = true; state.resourceFlag = 1; }
     state.enabled = true;
@@ -240,7 +306,7 @@ void install(const std::filesystem::path& diagnosticLog, bool automaticFrame) {
 }
 class LegacyReloadBackend final : public ReloadBackend {
 public:
-    explicit LegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame) { install(diagnosticLog, automaticFrame); }
+    explicit LegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame, LegacyReloadMode mode) { install(diagnosticLog, automaticFrame, mode); }
     ~LegacyReloadBackend() override { disableLegacyReload(); }
     ReloadResult reload(const ReloadRequest& request) override {
         std::unique_lock lock(state.mutex);
@@ -251,21 +317,21 @@ public:
             return ReloadResult::Unsupported;
         }
         if (!request.hotkey && !request.explicitRequest && !state.automatic) return ReloadResult::Unsupported;
-        if (state.busy || state.pending) return ReloadResult::Failed;
+        if (state.busy || state.pending || state.uiCompletion.inFlight()) return ReloadResult::Failed;
         const auto generation = ++state.generation;
         state.pending = true;
-        diagnostic("native_reload_queued mode=" + std::string(state.resourceFallback ? "resource_rebuild" : "legacy_ui"));
-        if (!state.wake.wait_for(lock, std::chrono::seconds(8), [&] { return !state.enabled || state.finished >= generation; })) {
+        diagnostic("native_reload_queued mode=" + std::string(state.mode == LegacyReloadMode::LegacyJsonUiOnly ? "legacy_json_ui_only" : state.resourceFallback ? "resource_rebuild" : "legacy_ui"));
+        if (!state.wake.wait_for(lock, std::chrono::seconds(8), [&] { return !state.enabled || state.faulted || state.finished >= generation; })) {
             state.pending = false;
             state.faulted = true;
             diagnostic("native_reload_timeout backend_disabled_until_restart"); // No retry after an unexpected or missing completion.
             return ReloadResult::Failed;
         }
-        return state.enabled && state.finished >= generation ? ReloadResult::Succeeded : ReloadResult::Failed;
+        return state.enabled && !state.faulted && state.finished >= generation ? ReloadResult::Succeeded : ReloadResult::Failed;
     }
 };
 }
-std::unique_ptr<ReloadBackend> makeLegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame) { return std::make_unique<LegacyReloadBackend>(diagnosticLog, automaticFrame); }
+std::unique_ptr<ReloadBackend> makeLegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame, LegacyReloadMode mode) { return std::make_unique<LegacyReloadBackend>(diagnosticLog, automaticFrame, mode); }
 bool armFromObservedThread(unsigned processId, unsigned threadId) {
     if (processId != GetCurrentProcessId() || !threadId) return false;
     HANDLE thread = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, threadId);
@@ -285,7 +351,8 @@ bool retireLegacyReloadHooks() noexcept {
 }
 bool setResourceFallback(unsigned observedFlag) {
     std::lock_guard lock(state.mutex);
-    if (!state.enabled || state.pending || state.busy || observedFlag > 1) return false;
+    if (!state.enabled || state.pending || state.busy || state.uiCompletion.inFlight() || observedFlag > 1) return false;
+    state.mode = LegacyReloadMode::FullResourceReload;
     state.resourceFlag = observedFlag;
     state.resourceFallback = true;
     diagnostic("resource_fallback_selected observed_flag=" + std::to_string(observedFlag));
@@ -304,6 +371,8 @@ std::string legacyReloadState() {
     out << "{\"enabled\":" << state.enabled << ",\"armed\":" << (state.owner != 0)
         << ",\"thread\":" << state.gameThread << ",\"busy\":" << state.busy
         << ",\"pending\":" << state.pending << ",\"faulted\":" << state.faulted
+        << ",\"uiOnly\":" << (state.mode == LegacyReloadMode::LegacyJsonUiOnly)
+        << ",\"uiActionInFlight\":" << state.uiCompletion.actionInFlight()
         << ",\"resourceFallback\":" << state.resourceFallback << ",\"resourceFlag\":" << state.resourceFlag << ",\"resourceEntryRva\":\"0x873a20\""
         << ",\"natural\":" << state.natural << ",\"submitted\":" << state.submitted
         << ",\"completed\":" << state.completed << "}";

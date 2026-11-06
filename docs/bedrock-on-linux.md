@@ -1,6 +1,6 @@
 # BedrockOnLinux foundation/HUD verification
 
-For the working alpha reload DLL, use [the experimental guide](experimental-legacy-reload.md). This page describes the separate foundational DLL and its historical HUD tests.
+For **v0.2.0-beta targeted JSON UI reload**, use [the standalone installation guide](standalone-initialization.md): inject the released DLL, configure `LegacyJsonUiOnly`, then press Ctrl+R. No Frida controller is required. Everything below describes the separate foundational DLL and historical HUD tests, not current release installation.
 
 Build the Windows x64 DLL with [MinGW instructions](build.md). Configure BedrockOnLinux's built-in injector to load:
 

@@ -1,4 +1,6 @@
-# Legacy JSON UI static-analysis utilities
+# Legacy JSON UI reverse-engineering utilities
+
+Normal **v0.2.0-beta** users should follow [standalone installation](../../docs/standalone-initialization.md). Frida and these tools are optional development aids. The confirmed targeted path and limitations are in [the UI reload evidence](../../docs/reverse-engineering/1.26.60-json-ui-only-prototype.md).
 
 These are developer analysis tools, separate from ConduitClient. The static tools in the table below do not execute or inject into Minecraft; the separate Frida runtime workflow is described at the end. Keep all inputs and generated output in ignored `.local/` or a private external directory. Consult [the findings](../../docs/reverse-engineering/1.26.60-legacy-reload-path.md) for executable identity, observed coordinates, evidence limitations and the current stopping point.
 
@@ -58,3 +60,8 @@ The separate `frida-proton/` tools validate a Windows Frida server and disposabl
 `frida-proton/summarize-legacy.py OUTPUT_DIRECTORY` aggregates the saved append-only event stream without target access. Its two-second grouping is a display heuristic, not a command boundary; asynchronous work can cross groups. The authoritative ordering is event sequence plus thread IDs and timestamps. See the [runtime findings](../../docs/reverse-engineering/1.26.60-legacy-reload-path.md) before interpreting names as established API semantics.
 
 The separate opt-in native prototype and lifecycle controller `frida-proton/run-prototype.mjs` are described in [the experimental guide](../../docs/experimental-legacy-reload.md). The working V5 outer native reload is visually confirmed but also refreshes chunks; retain it as a fallback while narrowing JSON UI invalidation. Recovery tools `inspect-prototype.mjs` and `retire-own-prototype.mjs` operate on our own prototype modules; the latter requires exact locally generated COFF symbol/prefix evidence and is not a generic game-call utility.
+
+
+## Bounded UI-owner discovery
+
+`frida-proton/inspect-ui-owner-agent.js` captures one validated legacy owner/context/getter identity through the established Windows Frida 17.23.2/Proton transport. Set it as `CONDUIT_AGENT_PATH` for `monitor-legacy.py`. It installs one observational frame hook, refuses an already-hooked entry, makes no native calls, and detaches that hook after one capture or 20 seconds. After capture, create STOP in the monitor output directory to stop its transport helpers. Do not run it alongside Conduit's native frame hook; use saved evidence unless a fresh development observation is necessary.

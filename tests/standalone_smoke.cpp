@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
     else if (mode == "invalid") std::ofstream(configRoot / "config.json") << "{bad";
     else {
         auto path = pack.generic_string(); // Forward slashes are valid Windows paths and JSON text.
-        std::ofstream(configRoot / "config.json") << "{\"resourcePackPath\":\"" << path << "\"}";
+        std::ofstream(configRoot / "config.json") << "{\"resourcePackPath\":\"" << path << "\",\"reloadMode\":\"" << (mode == "targeted" ? "LegacyJsonUiOnly" : "FullResourceReload") << "\"}";
     }
     const auto module = LoadLibraryA(argv[1]);
     if (!module) return 3;
