@@ -15,7 +15,7 @@ try {
  session=await bounded(c=>device.attach(matches[0].pid,{},c));
  session.detached.connect((reason,crash)=>{record({kind:'detached',reason,crash:crash?.summary??null});done=true;});
  script=await session.createScript(fs.readFileSync(process.env.CONDUIT_AGENT_PATH || new URL('./monitor-legacy-agent.js',import.meta.url),'utf8'));
- script.message.connect(m=>{if(m.type==='send'){record(m.payload);if(m.payload.kind==='ready')fs.writeFileSync(path.join(out,'READY'),JSON.stringify(m.payload,null,2));if(m.payload.kind==='fatal')done=true;}else{record({kind:'script-error',message:m});done=true;}});
+ script.message.connect(m=>{if(m.type==='send'){record(m.payload);if(m.payload.kind==='ready')fs.writeFileSync(path.join(out,'READY'),JSON.stringify(m.payload,null,2));if(m.payload.kind==='fatal'||m.payload.kind==='screen-observation-ended')done=true;}else{record({kind:'script-error',message:m});done=true;}});
  await script.load();
  let controlMtime=0;
  const start=Date.now();
