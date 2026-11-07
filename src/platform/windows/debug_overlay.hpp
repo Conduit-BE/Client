@@ -5,10 +5,12 @@
 #include <cstdint>
 #include <memory>
 
+namespace conduit { class Logger; }
 namespace conduit::windows {
 // Written only after the real backend reports success; excludes file validation.
 struct DebugReloadStats {
     ScreenMetrics* screenMetrics = nullptr; // Immutable after start; resident backend owns it.
+    Logger* diagnostics = nullptr; // Borrowed from the worker that runs this overlay.
     std::atomic<std::uint64_t> successes{0};
     std::atomic<std::int64_t> latencyMicros{-1};
 };

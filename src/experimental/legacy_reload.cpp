@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <vector>
 #include <limits>
+#include <bit>
 
 namespace conduit::experimental {
 namespace {
@@ -138,6 +139,10 @@ constexpr std::size_t maximumControlEdges = 32768;
 constexpr auto controlSampleInterval = std::chrono::seconds(1);
 constexpr auto controlSampleBudget = std::chrono::milliseconds(5);
 ControlCounter<8192, maximumControlEdges> controlCounter; // Only the verified UI thread uses scratch.
+// Evidence/semantics: docs/reverse-engineering/1.26.60-ui-factories.md.
+constexpr std::uintptr_t factoryComponentTableRva = 0xf0fcaf0;
+constexpr std::uintptr_t factoryComponentMaskRva = 0x128f5dc8;
+FactoryCensus<8192, maximumControlEdges> factoryCensus;
 struct NativeVector { std::uintptr_t begin, end, capacity; };
 struct SharedControl { std::uintptr_t object, owner; };
 static_assert(sizeof(SharedControl) == 16);
@@ -149,11 +154,105 @@ std::uintptr_t readPointerAt(std::uintptr_t object, std::size_t offset = 0) noex
     std::uintptr_t result{};
     return readAt(object, offset, &result, sizeof(result)) ? result : 0;
 }
-struct CollectedControls { ControlCount elements; std::uint32_t micros = 0; };
+struct CollectedControls { ControlCount elements; std::uint32_t micros = 0; FactoryStatistics factories{}; std::uint32_t totalMicros = 0; };
+template<std::size_t Size>
+bool copyControlName(std::uintptr_t object, std::array<char, Size>& text, bool& truncated) noexcept {
+    struct NativeString { std::array<char, 16> storage; std::uint64_t size, capacity; } value{};
+    if (!readAt(object, 0x20, &value, sizeof(value)) || value.size > value.capacity ||
+        value.size > ScreenMetrics::maximumNameBytes || value.capacity > maximumNativeStringCapacity ||
+        (value.capacity < 16 && value.size > 15)) return false;
+    const auto bytes = std::min(static_cast<std::size_t>(value.size), Size-1);
+    if (value.capacity < 16) std::memcpy(text.data(), value.storage.data(), bytes);
+    else {
+        std::uintptr_t source{};
+        std::memcpy(&source, value.storage.data(), sizeof(source));
+        if (bytes && !readAt(source, 0, text.data(), bytes)) { text.fill(0); return false; }
+    }
+    for (std::size_t i=0; i<bytes; ++i) if (static_cast<unsigned char>(text[i]) < 0x20 || text[i] == 0x7f) {
+        text.fill(0); return false;
+    }
+    truncated = value.size > bytes;
+    return true;
+}
+FactoryStatistics collectFactories() noexcept {
+    const auto deadline = ScreenMetrics::Clock::now()+controlSampleBudget;
+    const auto stopped = [&] { return ScreenMetrics::Clock::now() >= deadline; };
+    std::uint64_t factoryBit{};
+    if (!readAt(state.base, factoryComponentMaskRva, &factoryBit, sizeof(factoryBit)) ||
+        !std::has_single_bit(factoryBit)) return {};
+    if (!factoryCensus.prepareInstanceIds(stopped)) return {};
+    FactoryStatistics breakdown{};
+    std::size_t inspectedRoots = 0;
+    for (std::size_t index=0; index<factoryCensus.size(); ++index) {
+        if (stopped()) return {};
+        const auto control = factoryCensus.control(index);
+        struct Components { std::uint64_t mask; NativeVector entries; } components{};
+        static_assert(sizeof(Components) == 32);
+        if (!readAt(control, 0xb0, &components, sizeof(components))) return {};
+        if (!(components.mask & factoryBit)) continue;
+        const auto& entries = components.entries;
+        if (entries.end < entries.begin || entries.capacity < entries.end ||
+            (entries.end-entries.begin)%sizeof(std::uintptr_t)) return {};
+        const auto count = (entries.end-entries.begin)/sizeof(std::uintptr_t);
+        const auto rank = static_cast<std::size_t>(std::popcount(components.mask & (factoryBit-1)));
+        if (count > 128 || rank >= count) return {};
+        const auto component = readPointerAt(entries.begin, rank*sizeof(std::uintptr_t));
+        if (readPointerAt(component) != state.base+factoryComponentTableRva) return {};
+        if (readPointerAt(component, 8) != control) return {};
+        factoryCensus.addFactory();
+        NativeVector roots{};
+        if (!readAt(component, 0xa8, &roots, sizeof(roots)) || roots.end < roots.begin ||
+            roots.capacity < roots.end || (roots.end-roots.begin)%sizeof(SharedControl)) return {};
+        const auto rootCount = (roots.end-roots.begin)/sizeof(SharedControl);
+        if (rootCount > 8192 || inspectedRoots+rootCount > maximumControlEdges) return {};
+        inspectedRoots += rootCount;
+        std::array<SharedControl, 32> chunk{};
+        for (std::size_t offset=0; offset<rootCount;) {
+            if (stopped()) return {};
+            const auto size = std::min(chunk.size(), static_cast<std::size_t>(rootCount-offset));
+            if (!readAt(roots.begin, offset*sizeof(SharedControl), chunk.data(), size*sizeof(SharedControl))) return {};
+            for (std::size_t i=0; i<size; ++i) {
+                // The component owns the weak reference's control block. Never
+                // dereference its object; require membership in the owned active tree.
+                if (!chunk[i].owner || !factoryCensus.contains(chunk[i].object)) continue;
+                std::int32_t strong{};
+                if (!readAt(chunk[i].owner, 8, &strong, sizeof(strong)) || strong < 0) return {};
+                if (strong) factoryCensus.addLiveRoot(chunk[i].object);
+            }
+            offset += size;
+        }
+        NativeVector rootsAfter{};
+        if (!readAt(component, 0xa8, &rootsAfter, sizeof(rootsAfter)) ||
+            rootsAfter.begin != roots.begin || rootsAfter.end != roots.end || rootsAfter.capacity != roots.capacity) return {};
+        if (breakdown.detailCount < breakdown.details.size()) {
+            const auto counts = factoryCensus.finishFactory(stopped);
+            if (!counts.available) return {};
+            auto& row = breakdown.details[breakdown.detailCount++];
+            row.instanceId = factoryCensus.instanceId(control);
+            row.nameAvailable = copyControlName(component, row.name, row.nameTruncated);
+            row.ownerAvailable = copyControlName(control, row.owner, row.ownerTruncated);
+            row.liveRoots = counts.liveRoots;
+            row.controls = counts.generatedControls;
+            row.descendants = row.controls-row.liveRoots;
+        } else breakdown.detailsTruncated = true;
+        Components after{};
+        if (!readAt(control, 0xb0, &after, sizeof(after)) || after.mask != components.mask ||
+            after.entries.begin != entries.begin || after.entries.end != entries.end ||
+            after.entries.capacity != entries.capacity) return {};
+    }
+    const auto total = factoryCensus.finish(stopped);
+    if (!total.available) return {};
+    breakdown.available = true;
+    breakdown.instances = total.instances;
+    breakdown.liveRoots = total.liveRoots;
+    breakdown.generatedControls = total.generatedControls;
+    return breakdown;
+}
 CollectedControls collectActiveControls(void* stack) noexcept {
     static std::atomic_flag collecting = ATOMIC_FLAG_INIT;
     if (collecting.test_and_set(std::memory_order_acquire)) return {};
     struct Release { std::atomic_flag& flag; ~Release() { flag.clear(std::memory_order_release); } } release{collecting};
+    struct ClearCensus { ~ClearCensus() { factoryCensus.clear(); } } clearCensus;
     const auto start = ScreenMetrics::Clock::now();
     const auto deadline = start + controlSampleBudget;
     const auto stackAddress = reinterpret_cast<std::uintptr_t>(stack);
@@ -170,6 +269,7 @@ CollectedControls collectActiveControls(void* stack) noexcept {
     if (!readAt(tree, 8, &root, sizeof(root)) || !root.object || !root.owner) return {};
     const auto stopped = [&] { return ScreenMetrics::Clock::now() >= deadline; };
     const auto result = controlCounter.count(root.object, [&](std::uintptr_t node, auto&& emit) noexcept {
+        factoryCensus.recordControl(node);
         NativeVector children{};
         if (!readAt(node, 0x98, &children, sizeof(children)) || children.end < children.begin ||
             children.capacity < children.end || (children.end-children.begin)%sizeof(SharedControl))
@@ -184,6 +284,7 @@ CollectedControls collectActiveControls(void* stack) noexcept {
                 return ChildReadStatus::Unavailable;
             for (std::size_t index=0; index<size; ++index) {
                 if (!chunk[index].object || !chunk[index].owner) return ChildReadStatus::Unavailable;
+                factoryCensus.recordChild(chunk[index].object);
                 if (!emit(chunk[index].object)) return ChildReadStatus::Limited;
             }
             offset += size;
@@ -196,13 +297,17 @@ CollectedControls collectActiveControls(void* stack) noexcept {
         return ChildReadStatus::Complete;
     }, stopped);
     const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(ScreenMetrics::Clock::now()-start).count();
+    // Separate bounded phase: failure cannot replace a valid element total.
+    const auto factories = result.status == ControlCountStatus::Complete ? collectFactories() : FactoryStatistics{};
     NativeVector after{};
     SharedControl afterRoot{};
     if (!readAt(stackAddress, 0x18, &after, sizeof(after)) || after.begin != scenes.begin || after.end != scenes.end ||
         readPointerAt(after.end-24) != scene || readPointerAt(view, 0x50) != tree ||
         !readAt(tree, 8, &afterRoot, sizeof(afterRoot)) || afterRoot.object != root.object || afterRoot.owner != root.owner)
         return {};
-    return {result, static_cast<std::uint32_t>(std::max<std::int64_t>(0, elapsed))};
+    const auto totalElapsed = std::chrono::duration_cast<std::chrono::microseconds>(ScreenMetrics::Clock::now()-start).count();
+    return {result, static_cast<std::uint32_t>(std::max<std::int64_t>(0, elapsed)), factories,
+        static_cast<std::uint32_t>(std::max<std::int64_t>(0, totalElapsed))};
 }
 void* observeScreenName(void* stack, void* output) {
 #ifdef _MSC_VER
@@ -262,10 +367,14 @@ void* observeScreenName(void* stack, void* output) {
             diagnostic("native_controls_sample screen=" + std::string(currentName) + " count=" +
                 std::to_string(controls.elements.count) + " complete=" +
                 std::to_string(controls.elements.status == ControlCountStatus::Complete) + " collection_us=" +
-                std::to_string(controls.micros));
+                std::to_string(controls.micros) + " factory_available=" + std::to_string(controls.factories.available) +
+                " factory_instances=" + std::to_string(controls.factories.instances) +
+                " generated_roots=" + std::to_string(controls.factories.liveRoots) +
+                " generated_controls=" + std::to_string(controls.factories.generatedControls) +
+                " total_collection_us=" + std::to_string(controls.totalMicros));
         }
     }
-    state.screenMetrics.publish(currentName, now, controls.elements, controls.micros);
+    state.screenMetrics.publish(currentName, now, controls.elements, controls.micros, controls.factories);
     return result;
 }
 void observeLoader(void* owner) {

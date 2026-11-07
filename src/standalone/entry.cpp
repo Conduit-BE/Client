@@ -62,6 +62,7 @@ DWORD WINAPI initialize(LPVOID) noexcept {
         log->write("info", "Selected reload mode: " + modeName);
         auto backend = conduit::experimental::makeLegacyReloadBackend(root / L"native-stages.log", true, mode);
         debugStats.screenMetrics = &conduit::experimental::nativeScreenMetrics();
+        debugStats.diagnostics = log.get();
         backend = conduit::windows::trackDebugReloads(std::move(backend), debugStats);
         const auto clientLog = utf8(root / L"client.log");
         ConduitConfig config{sizeof(ConduitConfig), CONDUIT_API_VERSION, watch.c_str(), clientLog.c_str(),

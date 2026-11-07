@@ -30,6 +30,24 @@ int main() {
         combined.elements.status == conduit::ControlCountStatus::Complete && combined.collectionMicros == 123);
     require(metrics.publish("pause_screen", now));
     require(metrics.diagnostics(now).elements.status == conduit::ControlCountStatus::Unavailable);
+    require(metrics.publish("factory_test", now, {conduit::ControlCountStatus::Complete, 10}, 1, {true, 2, 3, 7}));
+    require(metrics.diagnostics(now).factories.available && metrics.diagnostics(now).factories.generatedControls==7);
+    require(!metrics.diagnostics(now+seconds(1)).factories.available);
+    conduit::FactoryStatistics detail{true, 2, 7, 280};
+    detail.detailCount = 2;
+    detail.details[0].nameAvailable = true; // Known empty factory name, not a failed read.
+    detail.details[0].instanceId = 10;
+    detail.details[1].nameAvailable = true;
+    detail.details[1].name[0] = 'x'; detail.details[1].instanceId = 11;
+    detail.details[1].liveRoots = 7; detail.details[1].controls = 280; detail.details[1].descendants = 273;
+    metrics.publish("factory_test", now, {}, 0, detail);
+    detail.details[1].name[0] = 'y';
+    require(metrics.diagnostics(now).factories.details[1].name[0]=='x');
+    require(metrics.diagnostics(now).factories.details[0].nameAvailable &&
+        metrics.diagnostics(now).factories.details[0].name[0]==0);
+    require(metrics.diagnostics(now+seconds(1)).factories.detailCount==0);
+    metrics.invalidate(); require(!metrics.diagnostics(now).factories.available);
+    metrics.publish("other_screen", now); require(!metrics.diagnostics(now).factories.available);
     require(metrics.publish("pause_screen", now, {conduit::ControlCountStatus::Incomplete, 4}));
     require(metrics.diagnostics(now).elements.status == conduit::ControlCountStatus::Incomplete);
     require(metrics.diagnostics(now+seconds(1)).elements.status == conduit::ControlCountStatus::Unavailable);

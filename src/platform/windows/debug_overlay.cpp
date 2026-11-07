@@ -1,6 +1,7 @@
 #include "platform/windows/debug_overlay.hpp"
 #include "core/hotkey.hpp"
 #include "core/presentation_rate.hpp"
+#include "core/logger.hpp"
 #include <windows.h>
 #include <dxgi1_2.h>
 #include <d3d11.h>
@@ -10,6 +11,10 @@
 #include <cstdio>
 #include <filesystem>
 #include <mutex>
+#include <iomanip>
+#include <sstream>
+#include <algorithm>
+#include <cstring>
 
 namespace conduit::windows {
 namespace {
@@ -124,7 +129,7 @@ std::unique_ptr<ReloadBackend> trackDebugReloads(std::unique_ptr<ReloadBackend> 
 
 namespace conduit::windows {
 namespace {
-struct PanelState { char text[512]{}; HFONT font{}; };
+struct PanelState { char text[8192]{}; HFONT font{}; int lineHeight = 18; };
 LRESULT CALLBACK panelProc(HWND window, UINT message, WPARAM w, LPARAM l) {
     if (message == WM_NCHITTEST) return HTTRANSPARENT;
     if (message == WM_MOUSEACTIVATE) return MA_NOACTIVATE;
@@ -136,8 +141,17 @@ LRESULT CALLBACK panelProc(HWND window, UINT message, WPARAM w, LPARAM l) {
         if (panel) {
             auto old = SelectObject(dc, panel->font);
             SetBkMode(dc, TRANSPARENT); SetTextColor(dc, RGB(240,245,250));
-            rect.left += 12; rect.top += 10;
-            DrawTextA(dc, panel->text, -1, &rect, DT_LEFT | DT_NOPREFIX);
+            rect.left += 12; rect.right -= 12; rect.top += 10; rect.bottom -= 10;
+            const char* line = panel->text;
+            while (*line && rect.top+panel->lineHeight <= rect.bottom) {
+                const char* end = std::strchr(line, '\n');
+                const auto length = end ? static_cast<int>(end-line) : static_cast<int>(std::strlen(line));
+                RECT row{rect.left, rect.top, rect.right, rect.top+panel->lineHeight};
+                DrawTextA(dc, line, length, &row, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                rect.top += panel->lineHeight;
+                if (!end) break;
+                line = end+1;
+            }
             SelectObject(dc, old);
         }
         EndPaint(window, &paint); return 0;
@@ -178,12 +192,65 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats) {
     SetWindowTextW(panel.window, L"ConduitClient Debug");
     bool visible = false;
     auto refresh = Clock::time_point{};
+    auto logRefresh = Clock::time_point{};
+    ScreenMetrics::Name loggedScreen{};
+    FactoryStatistics loggedFactories{};
+    std::uint64_t loggedReloads = 0, snapshotSequence = 0;
     while (!std::filesystem::exists(disablePath) && IsWindow(game)) {
         const bool focused = GetForegroundWindow() == game && !IsIconic(game);
         const bool pressed = edge.update((GetAsyncKeyState(VK_F3) & 0x8000) != 0);
         if (pressed && focused) visible = !visible;
         const auto now = Clock::now();
+        // Format/write copied diagnostics on this worker, never on the UI or Present thread.
+        // Coalesce changes to at most one block / 2 seconds, only while F3 is visible.
+        if (visible && focused && stats.diagnostics && stats.screenMetrics &&
+            now-logRefresh >= std::chrono::seconds(2)) {
+            logRefresh = now;
+            const auto snapshot = stats.screenMetrics->diagnostics(now);
+            const auto reloads = stats.successes.load();
+            if (snapshot.name != loggedScreen || snapshot.factories != loggedFactories || reloads != loggedReloads) {
+                loggedScreen = snapshot.name; loggedFactories = snapshot.factories; loggedReloads = reloads;
+                ++snapshotSequence;
+                std::ostringstream summary;
+                summary << "factory_breakdown snapshot=" << snapshotSequence << " screen=" << std::quoted(snapshot.name.data())
+                    << " available=" << snapshot.factories.available << " instances=" << snapshot.factories.instances
+                    << " roots=" << snapshot.factories.liveRoots << " controls_including_roots=" << snapshot.factories.generatedControls
+                    << " rows=" << snapshot.factories.detailCount << " truncated=" << snapshot.factories.detailsTruncated
+                    << " successful_reloads=" << reloads;
+                stats.diagnostics->write("debug", summary.str());
+                if (snapshot.factories.available) for (std::size_t i=0; i<snapshot.factories.detailCount; ++i) {
+                    const auto& row = snapshot.factories.details[i];
+                    std::ostringstream text;
+                    text << "factory_instance snapshot=" << snapshotSequence << " screen=" << std::quoted(snapshot.name.data())
+                        << " id=position-" << std::hex << row.instanceId << std::dec
+                        << " name=" << std::quoted(row.nameAvailable ? row.name.data() : "Unavailable")
+                        << " owner=" << std::quoted(row.ownerAvailable ? row.owner.data() : "Unavailable")
+                        << " instances=" << row.instances << " roots=" << row.liveRoots
+                        << " controls_including_roots=" << row.controls << " descendants_excluding_roots=" << row.descendants
+                        << " name_available=" << row.nameAvailable << " owner_available=" << row.ownerAvailable
+                        << " name_truncated=" << row.nameTruncated << " owner_truncated=" << row.ownerTruncated;
+                    stats.diagnostics->write("debug", text.str());
+                }
+            }
+        }
         if (visible && focused && now - refresh >= std::chrono::milliseconds(250)) {
+            RECT bounds{}; GetClientRect(game, &bounds);
+            POINT corners[2]{{bounds.left,bounds.top}, {bounds.right,bounds.bottom}};
+            ClientToScreen(game, &corners[0]); ClientToScreen(game, &corners[1]);
+            bounds = {corners[0].x,corners[0].y,corners[1].x,corners[1].y};
+            MONITORINFO monitor{}; monitor.cbSize = sizeof(monitor);
+            if (GetMonitorInfoW(MonitorFromWindow(game, MONITOR_DEFAULTTONEAREST), &monitor)) {
+                RECT intersection{};
+                if (!IntersectRect(&intersection, &bounds, &monitor.rcWork)) { ShowWindow(panel.window, SW_HIDE); refresh = now; continue; }
+                bounds = intersection;
+            }
+            const int width = std::min(560, std::max(1, static_cast<int>(bounds.right-bounds.left)-24));
+            const int availableHeight = std::max(1, static_cast<int>(bounds.bottom-bounds.top)-24);
+            HDC dc = GetDC(panel.window);
+            if (!dc) { ShowWindow(panel.window, SW_HIDE); refresh = now; continue; }
+            const auto oldFont = SelectObject(dc, panel.font);
+            TEXTMETRICA fontMetrics{}; GetTextMetricsA(dc, &fontMetrics);
+            data.lineHeight = std::max(1, static_cast<int>(fontMetrics.tmHeight));
             char fps[40] = "Unavailable";
             {
                 const std::lock_guard lock(timingMutex);
@@ -201,14 +268,69 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats) {
             } else if (metrics.elements.status == ControlCountStatus::Incomplete) {
                 std::snprintf(elements, sizeof(elements), ">= %u (incomplete)", metrics.elements.count);
             }
-            std::snprintf(data.text, sizeof(data.text),
-                "ConduitClient | Debug\nScreen: %s\nElements: %s\nFPS (DXGI presents): %s\n\nSuccessful reloads: %llu\nReload latency*: %s\n*Backend dispatch + completion", screen[0] ? screen.data() : "Unavailable", elements, fps,
-                static_cast<unsigned long long>(stats.successes.load()), latency);
+            char factories[32] = "Unavailable", generated[64] = "Unavailable";
+            if (metrics.factories.available) {
+                std::snprintf(factories, sizeof(factories), "%u", metrics.factories.instances);
+                std::snprintf(generated, sizeof(generated), "%u (%u roots)",
+                    metrics.factories.generatedControls, metrics.factories.liveRoots);
+            }
+            std::size_t used = 0; int lines = 0;
+            const auto append = [&](const char* format, auto... values) {
+                if (used >= sizeof(data.text)-1) return;
+                const int count = std::snprintf(data.text+used, sizeof(data.text)-used, format, values...);
+                if (count > 0) used += std::min(static_cast<std::size_t>(count), sizeof(data.text)-used-1);
+                ++lines;
+            };
+            append("ConduitClient | Debug\n");
+            append("Screen: %s\n", screen[0] ? screen.data() : "Unavailable");
+            append("Elements: %s\n", elements);
+            append("Factory instances: %s\n", factories);
+            if (metrics.factories.available) {
+                const auto detailCount = std::min<std::size_t>(metrics.factories.detailCount, metrics.factories.details.size());
+                const int rowBudget = std::max(0, (availableHeight-20)/data.lineHeight-10);
+                const bool needsNotice = detailCount > static_cast<std::size_t>(rowBudget) ||
+                    metrics.factories.instances > detailCount || metrics.factories.detailsTruncated;
+                const auto shown = std::min(detailCount, static_cast<std::size_t>(std::max(0, rowBudget-(needsNotice ? 1 : 0))));
+                for (std::size_t index=0; index<shown; ++index) {
+                    const auto& row = metrics.factories.details[index];
+                    const bool named = row.nameAvailable && row.name[0];
+                    char label[160]{};
+                    if (named) std::snprintf(label, sizeof(label), "%s%s", row.name.data(), row.nameTruncated ? "..." : "");
+                    else std::snprintf(label, sizeof(label), "%s #%016llx",
+                        row.ownerAvailable && row.owner[0] ? row.owner.data() : "factory",
+                        static_cast<unsigned long long>(row.instanceId));
+                    char suffix[80]{};
+                    std::snprintf(suffix, sizeof(suffix), ": %u roots, %u controls", row.liveRoots, row.controls);
+                    SIZE suffixSize{}; GetTextExtentPoint32A(dc, suffix, static_cast<int>(std::strlen(suffix)), &suffixSize);
+                    const int labelWidth = std::max(0, width-24-16-static_cast<int>(suffixSize.cx));
+                    int fit = 0; SIZE extent{};
+                    GetTextExtentExPointA(dc, label, static_cast<int>(std::strlen(label)), labelWidth, &fit, nullptr, &extent);
+                    if (!named && fit < static_cast<int>(std::strlen(label))) {
+                        std::snprintf(label, sizeof(label), "#%016llx", static_cast<unsigned long long>(row.instanceId));
+                        GetTextExtentExPointA(dc, label, static_cast<int>(std::strlen(label)), labelWidth, &fit, nullptr, &extent);
+                    }
+                    if (fit < static_cast<int>(std::strlen(label))) {
+                        fit = std::max(0, fit-3); label[fit] = 0;
+                        if (labelWidth >= 3*fontMetrics.tmAveCharWidth) std::strcat(label, "...");
+                    }
+                    append("  %s%s\n", label, suffix);
+                }
+                if (shown < detailCount || metrics.factories.instances > shown || metrics.factories.detailsTruncated)
+                    append("  ... %u more factory instances\n", metrics.factories.instances > shown ?
+                        metrics.factories.instances-static_cast<unsigned>(shown) : static_cast<unsigned>(detailCount-shown));
+            }
+            append("Generated controls: %s\n", generated);
+            append("FPS (DXGI presents): %s\n", fps);
+            append("\n");
+            append("Successful reloads: %llu\n", static_cast<unsigned long long>(stats.successes.load()));
+            append("Reload latency*: %s\n", latency);
+            append("*Backend dispatch + completion");
+            SelectObject(dc, oldFont); ReleaseDC(panel.window, dc);
             SetWindowTextA(panel.window, data.text); // Accessible diagnostic text; no input focus.
-            RECT rect{}; GetClientRect(game, &rect);
-            POINT origin{rect.right-432, 12}; if (origin.x < 0) origin.x = 0;
-            ClientToScreen(game, &origin);
-            SetWindowPos(panel.window, HWND_TOP, origin.x,origin.y,420,174,SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            const int height = std::min(availableHeight, lines*data.lineHeight+20);
+            const int left = std::max(static_cast<int>(bounds.left), static_cast<int>(bounds.right)-12-width);
+            const int top = std::max(static_cast<int>(bounds.top), std::min(static_cast<int>(bounds.top)+12, static_cast<int>(bounds.bottom)-height));
+            SetWindowPos(panel.window, HWND_TOP, left,top,width,height,SWP_NOACTIVATE | SWP_SHOWWINDOW);
             InvalidateRect(panel.window, nullptr, FALSE);
             refresh = now;
         }
