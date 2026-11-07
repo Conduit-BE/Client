@@ -22,6 +22,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <vector>
+#include <limits>
+#include <bit>
 
 namespace conduit::experimental {
 namespace {
@@ -41,6 +43,13 @@ constexpr std::uintptr_t clientOwnerGetterRva = 0x1a58900;
 constexpr std::uintptr_t clientCacheGetterRva = 0x56f040;
 constexpr std::uintptr_t uiWaitRva = 0xde790;
 using UiReloadCallback = void (*)(void*, void*, void*);
+// Observed natural primary-client stack name accessor; exact ABI and callers:
+// docs/reverse-engineering/1.26.60-native-screen.md
+constexpr std::uintptr_t screenNameRva = 0x56d000;
+constexpr std::uintptr_t sceneStackTableRva = 0xf0829b0;
+constexpr std::uint64_t maximumNativeStringCapacity = 1024 * 1024;
+constexpr std::uintptr_t primaryScreenNameCallerRva = 0x65b0119;
+using ScreenNameMethod = void* (*)(void*, void*);
 using OwnerMethod = void (*)(void*);
 using CompletionMethod = void (*)(void*, void*);
 using ResourceMethod = void (*)(void*, void*, std::uint32_t);
@@ -57,6 +66,9 @@ struct State {
     std::uintptr_t owner = 0, base = 0;
     DWORD gameThread = 0, observedThread = 0;
     std::uint64_t submitted = 0, completed = 0, natural = 0, generation = 0, finished = 0;
+    ScreenMetrics screenMetrics;
+    std::atomic<DWORD> screenThread{0};
+    ScreenNameMethod screenName = nullptr;
     OwnerMethod loader = nullptr, frame = nullptr;
     CompletionMethod completion = nullptr;
 };
@@ -118,8 +130,6 @@ std::uintptr_t validatedUiContext(void* currentOwner) noexcept {
     if (sentinel != 1 || !pointerAt(tree) || !pointerAt(tree + 8) || !pointerAt(tree + 0x10)) return 0;
     return client;
 }
-<<<<<<< Updated upstream
-=======
 bool copyMemory(const void* source, void* target, std::size_t size) noexcept {
     SIZE_T copied{};
     return source && ReadProcessMemory(GetCurrentProcess(), source, target, size, &copied) && copied == size;
@@ -471,7 +481,6 @@ void sampleFrontend(void* currentOwner) {
 }
 
 
->>>>>>> Stashed changes
 void observeLoader(void* owner) {
     {
         std::lock_guard lock(state.mutex);
@@ -540,6 +549,14 @@ void onFrameBoundary(void* currentOwner) {
             state.owner = reinterpret_cast<std::uintptr_t>(currentOwner);
             state.gameThread = GetCurrentThreadId();
             diagnostic("owner_acquired_from_current_frame after_live_reload_thread_observation");
+        }
+        if (state.enabled && !state.faulted && state.automaticFrame &&
+            caller == state.base + frameCallerRva && state.gameThread == GetCurrentThreadId() &&
+            state.owner == reinterpret_cast<std::uintptr_t>(currentOwner)) {
+            state.screenThread.store(pointerAt(reinterpret_cast<std::uintptr_t>(currentOwner) + 0x9d8) == 1
+                ? GetCurrentThreadId() : 0, std::memory_order_release);
+        } else {
+            state.screenThread.store(0, std::memory_order_release);
         }
         // Reacquire from this natural call; never dereference a cached heap pointer.
         if ((state.automaticFrame && caller != state.base + frameCallerRva) ||
@@ -649,7 +666,7 @@ void install(const std::filesystem::path& diagnosticLog, bool automaticFrame, Le
     state.enabled = false;
     lock.unlock();
     // Never hold our state mutex while MinHook suspends/resumes other threads.
-    // This DLL has its own MinHook instance and owns exactly these three hooks.
+    // Activate required reload hooks before installing optional diagnostics.
     const auto activation = MH_EnableHook(MH_ALL_HOOKS);
     lock.lock();
     if (activation != MH_OK) {
@@ -663,6 +680,21 @@ void install(const std::filesystem::path& diagnosticLog, bool automaticFrame, Le
     if (automaticFrame) { state.resourceFallback = true; state.resourceFlag = 1; }
     state.enabled = true;
     diagnostic("backend_enabled waiting_for_live_owner_affinity");
+    lock.unlock();
+    constexpr std::array<unsigned char, 8> screenPrefix{0x56,0x48,0x83,0xec,0x20,0x48,0x8b,0x41};
+    const bool screenCompatible = !std::memcmp(reinterpret_cast<void*>(state.base + screenNameRva),
+        screenPrefix.data(), screenPrefix.size());
+    if (automaticFrame && screenCompatible &&
+        MH_CreateHook(reinterpret_cast<void*>(state.base + screenNameRva), reinterpret_cast<void*>(&observeScreenName),
+            reinterpret_cast<void**>(&state.screenName)) == MH_OK) {
+        if (MH_EnableHook(reinterpret_cast<void*>(state.base + screenNameRva)) == MH_OK) {
+            diagnostic("native_screen_observer_installed primary_caller=0x65b0119 sample_ms=250");
+        } else {
+            diagnostic("native_screen_observer_enable_failed reload_hooks_preserved");
+        }
+    } else {
+        diagnostic("native_screen_observer_unavailable reload_hooks_preserved");
+    }
 }
 class LegacyReloadBackend final : public ReloadBackend {
 public:
@@ -691,6 +723,7 @@ public:
     }
 };
 }
+ScreenMetrics& nativeScreenMetrics() noexcept { return state.screenMetrics; }
 std::unique_ptr<ReloadBackend> makeLegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame, LegacyReloadMode mode) { return std::make_unique<LegacyReloadBackend>(diagnosticLog, automaticFrame, mode); }
 bool armFromObservedThread(unsigned processId, unsigned threadId) {
     if (processId != GetCurrentProcessId() || !threadId) return false;
@@ -721,6 +754,8 @@ bool setResourceFallback(unsigned observedFlag) {
 void disableLegacyReload() noexcept {
     std::lock_guard lock(state.mutex);
     state.enabled = false;
+    state.screenThread.store(0, std::memory_order_release);
+    state.screenMetrics.invalidate();
     state.pending = false;
     state.wake.notify_all();
 }

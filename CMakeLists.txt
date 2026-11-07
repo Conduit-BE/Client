@@ -96,21 +96,15 @@ if(WIN32)
     if(CONDUIT_STANDALONE_LEGACY_RELOAD)
         add_library(ConduitStandalone SHARED
             src/client.cpp src/platform/windows/hotkey.cpp
-<<<<<<< Updated upstream
-            src/experimental/legacy_reload.cpp src/standalone/entry.cpp)
-=======
             src/experimental/legacy_reload.cpp src/standalone/entry.cpp
             src/platform/windows/debug_overlay.cpp src/platform/windows/native_debug_renderer.cpp)
->>>>>>> Stashed changes
         target_include_directories(ConduitStandalone PRIVATE include src)
-        target_link_libraries(ConduitStandalone PRIVATE ConduitCore minhook user32 bcrypt nlohmann_json::nlohmann_json)
+        target_link_libraries(ConduitStandalone PRIVATE ConduitCore minhook user32 gdi32 d3d11 dxgi bcrypt nlohmann_json::nlohmann_json)
         set_target_properties(ConduitStandalone PROPERTIES PREFIX "" OUTPUT_NAME ConduitClient
             RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/standalone"
             ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/standalone")
         conduit_target(ConduitStandalone)
         if(BUILD_TESTING)
-<<<<<<< Updated upstream
-=======
             add_executable(ConduitDebugOverlaySmoke tests/debug_overlay_smoke.cpp src/platform/windows/debug_overlay.cpp src/platform/windows/native_debug_renderer.cpp)
             target_include_directories(ConduitDebugOverlaySmoke PRIVATE src)
             target_link_libraries(ConduitDebugOverlaySmoke PRIVATE ConduitCore minhook user32 gdi32 d3d11 dxgi)
@@ -119,7 +113,6 @@ if(WIN32)
                 add_test(NAME debug_overlay_smoke COMMAND ConduitDebugOverlaySmoke)
                 set_tests_properties(debug_overlay_smoke PROPERTIES TIMEOUT 30)
             endif()
->>>>>>> Stashed changes
             add_executable(ConduitStandaloneSmoke tests/standalone_smoke.cpp)
             target_include_directories(ConduitStandaloneSmoke PRIVATE src)
             add_dependencies(ConduitStandaloneSmoke ConduitStandalone)
@@ -206,8 +199,6 @@ if(BUILD_TESTING)
         set_tests_properties(standalone_policy PROPERTIES TIMEOUT 30)
     endif()
 endif()
-<<<<<<< Updated upstream
-=======
 
 if(BUILD_TESTING)
     add_executable(ConduitPresentationRateTests tests/presentation_rate_tests.cpp)
@@ -261,4 +252,3 @@ if(BUILD_TESTING)
         add_test(NAME binding_count COMMAND ConduitBindingCountTests)
     endif()
 endif()
->>>>>>> Stashed changes

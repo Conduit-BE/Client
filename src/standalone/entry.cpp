@@ -1,4 +1,5 @@
 #include "client.hpp"
+#include "platform/windows/debug_overlay.hpp"
 #include "core/logger.hpp"
 #include "experimental/legacy_reload.hpp"
 #include "standalone/initialization.hpp"
@@ -23,6 +24,7 @@ DWORD WINAPI initialize(LPVOID) noexcept {
         OutputDebugStringA("ConduitClient: cannot pin initialization worker");
         initialization.fail(); return 0;
     }
+    conduit::windows::DebugReloadStats debugStats;
     std::unique_ptr<conduit::Logger> log;
     std::unique_ptr<conduit::Client> client;
     try {
@@ -59,6 +61,9 @@ DWORD WINAPI initialize(LPVOID) noexcept {
         const auto mode = conduit::experimental::parseLegacyReloadMode(modeName);
         log->write("info", "Selected reload mode: " + modeName);
         auto backend = conduit::experimental::makeLegacyReloadBackend(root / L"native-stages.log", true, mode);
+        debugStats.screenMetrics = &conduit::experimental::nativeScreenMetrics();
+        debugStats.diagnostics = log.get();
+        backend = conduit::windows::trackDebugReloads(std::move(backend), debugStats);
         const auto clientLog = utf8(root / L"client.log");
         ConduitConfig config{sizeof(ConduitConfig), CONDUIT_API_VERSION, watch.c_str(), clientLog.c_str(),
                              CONDUIT_HOTKEY_DEFAULT, 30, 150};
@@ -67,6 +72,9 @@ DWORD WINAPI initialize(LPVOID) noexcept {
         initialization.running();
         log->write("info", "Client running; waiting for verified frame affinity. See native-stages.log for automatic_backend_armed");
         log->write("info", "Pack root (validation on request only; continuous watching disabled): " + watch);
+        log->write("info", "F3 overlay enabled; native screen and control sampling active when verified");
+        try { conduit::windows::runDebugOverlay(disableFile.c_str(), debugStats); }
+        catch (const std::exception& error) { log->write("error", std::string("Overlay stopped: ") + error.what()); }
         while (!std::filesystem::exists(disableFile)) Sleep(250);
         initialization.disable();
         conduit::experimental::disableLegacyReload();

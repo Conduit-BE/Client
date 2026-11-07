@@ -1,5 +1,6 @@
 #pragma once
 #include "core/reload_manager.hpp"
+#include "core/screen_metrics.hpp"
 #include "experimental/legacy_reload_mode.hpp"
 #include <memory>
 #include <filesystem>
@@ -12,4 +13,6 @@ bool armFromObservedThread(unsigned processId, unsigned threadId);
 bool retireLegacyReloadHooks() noexcept;
 void disableLegacyReload() noexcept;
 std::string legacyReloadState();
+// Resident copied diagnostics; no game pointer escapes the native callback.
+ScreenMetrics& nativeScreenMetrics() noexcept;
 }
