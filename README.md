@@ -1,12 +1,23 @@
-# ConduitClient
+<p align="center">
+  <img src="./assets/logo.png" alt="Conduit Client Logo">
+</p>
 
-A C++20 development client for **Minecraft Bedrock Windows 1.26.60.5**, GDK x64, package **1.26.6005.0**, developed and tested through BedrockOnLinux/Proton on Linux.
+<h1></h1>
 
-## v0.2.0-beta — Legacy JSON UI hot reload
+<p align="center">
+  A DLL-based Client made for Minecraft Bedrock, with its purpose being helping you create JSON UI projects faster, easier and more optimized!
+</p>
 
-[Download v0.2.0-beta](https://github.com/zelisce/Conduit-Client/releases/tag/v0.2.0-beta). Inject the standalone `ConduitClient.dll`, save a legacy JSON UI edit, press **Ctrl+R**, then reopen the affected screen. No manual `/reload all`, Frida server, external controller or thread configuration is required.
+<div align="center">
+  <a href="https://discord.gg/bestack">
+    <img src="https://img.shields.io/discord/1402649772271210566?logo=discord&logoColor=white&color=5865F2&style=for-the-badge" alt="Discord">
+  </a>
+  <img src="https://img.shields.io/github/stars/Conduit-BE/client?style=for-the-badge" alt="GitHub Stars">
+</div>
 
-**The user confirmed edited UI becomes visible without visible chunk or texture refresh**, and confirmed follow-up testing. A brief freeze remains. This is an experimental pre-release for the exact tested Minecraft image; back up your worlds. Complete resource isolation and long-run stability are not guaranteed.
+<h2>Introduction</h2>
+
+**Conduit Client** is a Minecraft: Bedrock Edition DLL client that helps you build **JSON User Interfaces** easier, faster and more optimized with features like JSON UI reload, debug menu and more coming soon!
 
 ## Install and configure
 
@@ -26,8 +37,6 @@ Download `ConduitClient.dll`, `SHA256SUMS`, and `THIRD_PARTY_NOTICES.txt` from t
 2. Exit Minecraft to retire older pinned DLLs. Configure BedrockOnLinux's built-in injector or your Windows x64 `LoadLibrary` injector to load **only this release's DLL**, then launch Minecraft. Normal use needs no Frida components or exported startup call.
 3. Enter your backed-up world, save a visible JSON UI change, press **Ctrl+R**, and close/reopen its screen. Subsequent edits need no world or game restart.
 
-Continuous watching and startup JSON scans are disabled. JSONC syntax validation runs on request before native dispatch; it does not guarantee Minecraft semantic validation or transactional rollback.
-
 [Full setup, build instructions, logs and troubleshooting](docs/standalone-initialization.md).
 
 ## Modes and limitations
@@ -37,7 +46,15 @@ Continuous watching and startup JSON scans are disabled. JSONC syntax validation
 
 Both modes require the exact supported image and acquire the live owner/game thread automatically. Requests cannot overlap. Unknown contexts, unsupported builds and unexpected completion timeouts disable dispatch rather than guessing. The native UI action can wait for outstanding work; Conduit cannot safely cancel an operation already executing.
 
-Observed targeted native callback durations were **261–357 ms** in four captured runs. These are action durations, not measured frame stalls or a controlled performance comparison. Exact repeat counts and separate skin observations were not reported.
+## Keybinds
+
+Conduit Client provides keyboard shortcuts to simplify your JSON UI development workflow.
+
+| Keybind | Action | Description |
+|---|---|---|
+| <code>Ctrl&nbsp;+&nbsp;R</code> | Reload JSON UI | Reloads the active development resource pack's JSON UI definitions using the configured reload mode. |
+| `F3` | Toggle&nbsp;Diagnostics&nbsp; | Shows or hides the diagnostics interface, displaying information about the current screen. |
+| <code>Ctrl&nbsp;+&nbsp;K</code> | Eject Client | Ejects the client from the current Minecraft instance. |
 
 ## Logs and disabling
 
