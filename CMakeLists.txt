@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ConduitClient VERSION 0.2.0 LANGUAGES C CXX)
+project(ConduitClient VERSION 0.3.0 LANGUAGES C CXX)
 
 include(CTest)
 find_package(Threads REQUIRED)
@@ -17,6 +17,7 @@ FetchContent_Declare(nlohmann_json
 FetchContent_MakeAvailable(nlohmann_json)
 
 function(conduit_target target)
+    target_compile_definitions(${target} PRIVATE CONDUIT_DISPLAY_VERSION="v${PROJECT_VERSION}-beta")
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8)
     else()
@@ -95,7 +96,12 @@ if(WIN32)
     if(CONDUIT_STANDALONE_LEGACY_RELOAD)
         add_library(ConduitStandalone SHARED
             src/client.cpp src/platform/windows/hotkey.cpp
+<<<<<<< Updated upstream
             src/experimental/legacy_reload.cpp src/standalone/entry.cpp)
+=======
+            src/experimental/legacy_reload.cpp src/standalone/entry.cpp
+            src/platform/windows/debug_overlay.cpp src/platform/windows/native_debug_renderer.cpp)
+>>>>>>> Stashed changes
         target_include_directories(ConduitStandalone PRIVATE include src)
         target_link_libraries(ConduitStandalone PRIVATE ConduitCore minhook user32 bcrypt nlohmann_json::nlohmann_json)
         set_target_properties(ConduitStandalone PROPERTIES PREFIX "" OUTPUT_NAME ConduitClient
@@ -103,6 +109,17 @@ if(WIN32)
             ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/standalone")
         conduit_target(ConduitStandalone)
         if(BUILD_TESTING)
+<<<<<<< Updated upstream
+=======
+            add_executable(ConduitDebugOverlaySmoke tests/debug_overlay_smoke.cpp src/platform/windows/debug_overlay.cpp src/platform/windows/native_debug_renderer.cpp)
+            target_include_directories(ConduitDebugOverlaySmoke PRIVATE src)
+            target_link_libraries(ConduitDebugOverlaySmoke PRIVATE ConduitCore minhook user32 gdi32 d3d11 dxgi)
+            conduit_target(ConduitDebugOverlaySmoke)
+            if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+                add_test(NAME debug_overlay_smoke COMMAND ConduitDebugOverlaySmoke)
+                set_tests_properties(debug_overlay_smoke PROPERTIES TIMEOUT 30)
+            endif()
+>>>>>>> Stashed changes
             add_executable(ConduitStandaloneSmoke tests/standalone_smoke.cpp)
             target_include_directories(ConduitStandaloneSmoke PRIVATE src)
             add_dependencies(ConduitStandaloneSmoke ConduitStandalone)
@@ -189,3 +206,59 @@ if(BUILD_TESTING)
         set_tests_properties(standalone_policy PROPERTIES TIMEOUT 30)
     endif()
 endif()
+<<<<<<< Updated upstream
+=======
+
+if(BUILD_TESTING)
+    add_executable(ConduitPresentationRateTests tests/presentation_rate_tests.cpp)
+    target_include_directories(ConduitPresentationRateTests PRIVATE src)
+    conduit_target(ConduitPresentationRateTests)
+    if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+        add_test(NAME presentation_rate COMMAND ConduitPresentationRateTests)
+    endif()
+endif()
+
+if(BUILD_TESTING)
+    add_executable(ConduitScreenMetricsTests tests/screen_metrics_tests.cpp)
+    target_include_directories(ConduitScreenMetricsTests PRIVATE src)
+    target_link_libraries(ConduitScreenMetricsTests PRIVATE Threads::Threads)
+    conduit_target(ConduitScreenMetricsTests)
+    if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+        add_test(NAME screen_metrics COMMAND ConduitScreenMetricsTests)
+    endif()
+endif()
+
+if(BUILD_TESTING)
+    add_executable(ConduitControlCountTests tests/control_count_tests.cpp)
+    target_include_directories(ConduitControlCountTests PRIVATE src)
+    conduit_target(ConduitControlCountTests)
+    if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+        add_test(NAME control_count COMMAND ConduitControlCountTests)
+    endif()
+    add_executable(ConduitFactoryCensusTests tests/factory_census_tests.cpp)
+    target_include_directories(ConduitFactoryCensusTests PRIVATE src)
+    conduit_target(ConduitFactoryCensusTests)
+    if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+        add_test(NAME factory_census COMMAND ConduitFactoryCensusTests)
+    endif()
+endif()
+
+if(BUILD_TESTING)
+    add_executable(ConduitDebugPanelTests tests/debug_panel_tests.cpp)
+    target_include_directories(ConduitDebugPanelTests PRIVATE src)
+    target_link_libraries(ConduitDebugPanelTests PRIVATE Threads::Threads)
+    conduit_target(ConduitDebugPanelTests)
+    if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+        add_test(NAME debug_panel_layout COMMAND ConduitDebugPanelTests)
+    endif()
+endif()
+
+if(BUILD_TESTING)
+    add_executable(ConduitBindingCountTests tests/binding_count_tests.cpp)
+    target_include_directories(ConduitBindingCountTests PRIVATE src)
+    conduit_target(ConduitBindingCountTests)
+    if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+        add_test(NAME binding_count COMMAND ConduitBindingCountTests)
+    endif()
+endif()
+>>>>>>> Stashed changes
