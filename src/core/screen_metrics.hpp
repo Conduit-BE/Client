@@ -1,5 +1,6 @@
 #pragma once
 #include "core/control_count.hpp"
+#include "core/factory_census.hpp"
 #include <array>
 #include <chrono>
 #include <cstring>
@@ -17,9 +18,10 @@ public:
         Name name{};
         ControlCount elements{};
         std::uint32_t collectionMicros = 0;
+        FactoryStatistics factories{};
     };
     bool publish(std::string_view name, Clock::time_point now, ControlCount elements = {},
-                 std::uint32_t collectionMicros = 0) noexcept {
+                 std::uint32_t collectionMicros = 0, FactoryStatistics factories = {}) noexcept {
         if (name.empty() || name.size() > maximumNameBytes) return invalidate();
         for (const unsigned char ch : name) {
             if (ch < 0x20 || ch == 0x7f) return invalidate();
@@ -30,6 +32,7 @@ public:
         std::memcpy(name_.data(), name.data(), name.size());
         elements_ = elements;
         collectionMicros_ = collectionMicros;
+        factories_ = factories;
         sampled_ = now;
         available_ = true;
         return true;
@@ -49,7 +52,7 @@ public:
             std::memcpy(unavailable.name.data(), text, sizeof(text));
             return unavailable;
         }
-        return {name_, elements_, collectionMicros_};
+        return {name_, elements_, collectionMicros_, factories_};
     }
 
 private:
@@ -57,6 +60,7 @@ private:
     Name name_{};
     ControlCount elements_{};
     std::uint32_t collectionMicros_ = 0;
+    FactoryStatistics factories_{};
     Clock::time_point sampled_{};
     bool available_ = false;
 };
