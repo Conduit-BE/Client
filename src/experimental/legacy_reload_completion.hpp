@@ -1,13 +1,5 @@
 #pragma once
-#include <stdexcept>
-#include <string_view>
 namespace conduit::experimental {
-enum class LegacyReloadMode { FullResourceReload, LegacyJsonUiOnly };
-inline LegacyReloadMode parseLegacyReloadMode(std::string_view text) {
-    if (text == "FullResourceReload") return LegacyReloadMode::FullResourceReload;
-    if (text == "LegacyJsonUiOnly") return LegacyReloadMode::LegacyJsonUiOnly;
-    throw std::invalid_argument("reloadMode must be FullResourceReload or LegacyJsonUiOnly");
-}
 // Protected by the backend mutex; completion may run while the action pumps tasks.
 class UiReloadCompletion {
 public:

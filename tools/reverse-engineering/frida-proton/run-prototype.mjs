@@ -12,12 +12,12 @@ try {
  const config=${JSON.stringify(config)};
  if(config.retireModule){const prior=Process.findModuleByName(config.retireModule);if(prior){const before=Memory.alloc(2048);new NativeFunction(prior.getExportByName('ConduitPrototypeSnapshot'),'uint',['pointer','uint'])(before,2048);if(before.readUtf8String().includes('\"busy\":1'))throw Error('Previous own prototype still busy');new NativeFunction(prior.getExportByName('ConduitPrototypeDisable'),'void',[])();}}
  const module=Module.load(config.dll);
- const api={start:new NativeFunction(module.getExportByName('ConduitPrototypeStartAsync'),'int',['pointer','pointer']),state:new NativeFunction(module.getExportByName('ConduitPrototypeSnapshot'),'uint',['pointer','uint']),configure:new NativeFunction(module.getExportByName('ConduitPrototypeSetResourceFallback'),'int',['uint']),arm:new NativeFunction(module.getExportByName('ConduitPrototypeArmFromObservation'),'int',['uint','uint']),disable:new NativeFunction(module.getExportByName('ConduitPrototypeDisable'),'void',[])};
+ const api={start:new NativeFunction(module.getExportByName('ConduitPrototypeStartAsync'),'int',['pointer','pointer']),state:new NativeFunction(module.getExportByName('ConduitPrototypeSnapshot'),'uint',['pointer','uint']),arm:new NativeFunction(module.getExportByName('ConduitPrototypeArmFromObservation'),'int',['uint','uint']),disable:new NativeFunction(module.getExportByName('ConduitPrototypeDisable'),'void',[])};
  const started=api.start(Memory.allocUtf8String(config.watchDirectory),Memory.allocUtf8String(config.logFile));send({kind:'start-queued',started,module:module.path});
  let configured=false;
  function state(){const buffer=Memory.alloc(2048);api.state(buffer,2048);return buffer.readUtf8String();}
  const timer=setInterval(()=>{const value=state();send({kind:'state',value});if(value.startsWith('ERROR:'))send({kind:'startup-error',value});
- if(!configured&&value.includes('"enabled":1')){const result=api.configure(config.observedFlag),armed=api.arm(config.windowsPid,config.observedThread);configured=result===1&&armed===1;send({kind:'configured',result,armed,state:state()});}},1000);
+ if(!configured&&value.includes('"enabled":1')){const armed=api.arm(config.windowsPid,config.observedThread);configured=armed===1;send({kind:'armed',armed,state:state()});}},1000);
  rpc.exports={disable(){api.disable();return state();},stop(){clearInterval(timer);return state();}};
  `);
  script.message.connect(m=>{record(m.type==='send'?m.payload:{kind:'script-error',message:m});if(m.type==='error'||m.payload?.kind==='startup-error')done=true;});

@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
         wchar_t local[32768]{};
         require(GetEnvironmentVariableW(L"LOCALAPPDATA", local, 32768) > 0,
                 "LOCALAPPDATA unavailable");
-        const auto log = fs::path(local) / L"ConduitClient" / L"conduit.log";
+        const auto log = fs::path(local) / L"ConduitClient" / L"logs" / L"conduit.log";
         std::error_code ignored;
         fs::remove(log, ignored);
         const std::string bytes(argv[1]);

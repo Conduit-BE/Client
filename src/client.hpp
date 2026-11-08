@@ -21,7 +21,7 @@ class Client {
 public:
     explicit Client(const ConduitConfig& config, std::function<void()> onHotkey = {},
                     std::unique_ptr<ReloadBackend> backend = {}, bool skipDevelopmentMetadata = false,
-                    bool monitorChanges = true);
+                    bool monitorChanges = true, std::function<bool()> validateReload = {});
     ~Client();
     Client(const Client&) = delete;
     Client& operator=(const Client&) = delete;
@@ -40,6 +40,7 @@ private:
     const bool monitorChanges_;
     Logger logger_;
     std::function<void()> onHotkey_;
+    std::function<bool()> validateReload_;
     ReloadManager reloadManager_;
     JsonUiRepository jsonUi_;
     std::unique_ptr<FileMonitor> monitor_;

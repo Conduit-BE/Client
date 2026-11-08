@@ -1,5 +1,6 @@
 #include "platform/windows/native_debug_renderer.hpp"
 #include <windows.h>
+#include "minecraft/compatibility.hpp"
 #include <MinHook.h>
 #include <atomic>
 #include <cstddef>
@@ -11,9 +12,7 @@
 // docs/reverse-engineering/1.26.60-native-debug-rendering.md
 namespace conduit::windows {
 namespace {
-constexpr std::uintptr_t viewRenderRva = 0x4cb3260, flushTextRva = 0x6c0b230;
-constexpr std::uintptr_t contextTableRva = 0xf2d18c0, vanillaFontTableRva = 0xf0ea8a0;
-constexpr std::size_t textRecordSize = 104;
+const minecraft::CompatibilityProfile* profile{};
 struct Rect { float left, right, top, bottom; };
 struct Color { float red, green, blue; };
 struct Span { const char* data; std::size_t size; };
@@ -52,43 +51,43 @@ thread_local std::uintptr_t lastFontIdentity = 0;
 void render(Frame& frame) {
     if (!frame.font || !frame.flushed || !mailbox->tryRead(text) || !text.visible) return;
     void* context = frame.context;
-    auto* screen = field<void*>(context, 0x10);
-    auto* gui = field<void*>(screen, 0xa0);
-    const float width = field<float>(gui, 0x50), height = field<float>(gui, 0x54);
+    auto* screen = field<void*>(context, profile->layout.screenContext);
+    auto* gui = field<void*>(screen, profile->layout.screenGui);
+    const float width = field<float>(gui, profile->layout.guiWidth), height = field<float>(gui, profile->layout.guiHeight);
     if (!std::isfinite(width) || !std::isfinite(height) || width < 40 || height < 38 || width > 32768 || height > 32768) return;
     // Original ScreenView::render has completed. Never append to unflushed game text.
-    const auto begin = field<std::uintptr_t>(context, 0x80);
-    if (!begin || field<std::uintptr_t>(context, 0x88) != begin) return;
+    const auto begin = field<std::uintptr_t>(context, profile->layout.textBegin);
+    if (!begin || field<std::uintptr_t>(context, profile->layout.textEnd) != begin) return;
     if (layoutRevision != text.revision || width != lastWidth || height != lastHeight ||
         lastFontIdentity != reinterpret_cast<std::uintptr_t>(frame.font)) {
         const auto measure = [&](const char* value, std::size_t size) {
             const Span span{value, size};
-            return reinterpret_cast<Width>(base+0xe6be40)(frame.font, &span, DebugPanelLayout::fontScale, false);
+            return reinterpret_cast<Width>(base+profile->renderer.textWidthRva)(frame.font, &span, DebugPanelLayout::fontScale, false);
         };
         layout = layoutDebugPanel(text.text.data(), width, height, measure);
         layoutRevision = text.revision; lastWidth = width; lastHeight = height;
         lastFontIdentity = reinterpret_cast<std::uintptr_t>(frame.font);
     }
     if (!layout.count) return;
-    const auto capacity = field<std::uintptr_t>(context, 0x90);
-    if (capacity < begin || capacity-begin < layout.count*textRecordSize) return;
-    auto* gpu = field<void*>(screen, 0x10);
-    auto* color = field<void*>(screen, 0x30);
+    const auto capacity = field<std::uintptr_t>(context, profile->layout.textCapacity);
+    if (capacity < begin || capacity-begin < layout.count*profile->layout.textRecordSize) return;
+    auto* gpu = field<void*>(screen, profile->layout.screenGpu);
+    auto* color = field<void*>(screen, profile->layout.screenColor);
     struct Restore {
         void* color; void* gpu;
         std::byte rgba[17], clip[16];
         Restore(void* c, void* g) : color(c), gpu(g) {
-            std::memcpy(rgba, color, sizeof(rgba)); std::memcpy(clip, static_cast<std::byte*>(gpu)+0x94, sizeof(clip));
+            std::memcpy(rgba, color, sizeof(rgba)); std::memcpy(clip, static_cast<std::byte*>(gpu)+profile->layout.gpuClip, sizeof(clip));
         }
         ~Restore() {
-            std::memcpy(color, rgba, sizeof(rgba)); std::memcpy(static_cast<std::byte*>(gpu)+0x94, clip, sizeof(clip));
+            std::memcpy(color, rgba, sizeof(rgba)); std::memcpy(static_cast<std::byte*>(gpu)+profile->layout.gpuClip, clip, sizeof(clip));
         }
     } restore(color, gpu);
     const Rect viewport{0, width, 0, height};
-    reinterpret_cast<SetClip>(base+0x6c11670)(context, &viewport);
+    reinterpret_cast<SetClip>(base+profile->renderer.setClipRva)(context, &viewport);
     const Rect panel{layout.left, layout.left+layout.width, layout.top, layout.top+layout.height};
     const Color background{0, 0, 0}, foreground{1, 1, 1};
-    reinterpret_cast<Fill>(base+0x6c11440)(context, &panel, &background, 0.5f);
+    reinterpret_cast<Fill>(base+profile->renderer.fillRva)(context, &panel, &background, 0.5f);
     const Measure measure{};
     const int caret = -1;
     for (unsigned index = 0; index < layout.count; ++index) {
@@ -96,7 +95,7 @@ void render(Frame& frame) {
         const Span span{row.data(), std::strlen(row.data())};
         const float y = panel.top+DebugPanelLayout::padding+index*DebugPanelLayout::lineHeight;
         const Rect bounds{panel.left+DebugPanelLayout::padding, panel.right-DebugPanelLayout::padding, y, y+10*DebugPanelLayout::fontScale};
-        reinterpret_cast<DrawText>(base+0x6c0ac90)(context, frame.font, &bounds, &span, &foreground, 1, 0, &measure, &caret);
+        reinterpret_cast<DrawText>(base+profile->renderer.drawTextRva)(context, frame.font, &bounds, &span, &foreground, 1, 0, &measure, &caret);
     }
     // Borrowed strings remain alive until this synchronous flush returns. Bit 32 prevents
     // advancing the font animation timer twice; low 32 bits preserve the natural text depth.
@@ -106,12 +105,12 @@ void onFlush(void* context, float delta, std::uint64_t flags) {
     Call call;
     auto* frame = currentFrame;
     if (enabled.load() && frame && frame->context == context) {
-        const auto begin = field<std::uintptr_t>(context, 0x80), end = field<std::uintptr_t>(context, 0x88);
-        if (begin && end >= begin && (end-begin)%textRecordSize == 0) {
-            const auto count = std::min<std::uintptr_t>((end-begin)/textRecordSize, 64);
+        const auto begin = field<std::uintptr_t>(context, profile->layout.textBegin), end = field<std::uintptr_t>(context, profile->layout.textEnd);
+        if (begin && end >= begin && (end-begin)%profile->layout.textRecordSize == 0) {
+            const auto count = std::min<std::uintptr_t>((end-begin)/profile->layout.textRecordSize, 64);
             for (std::uintptr_t i = 0; i < count && !frame->font; ++i) {
-                auto* font = *reinterpret_cast<void**>(begin+i*textRecordSize);
-                if (font && field<std::uintptr_t>(font, 0) == base+vanillaFontTableRva) frame->font = font;
+                auto* font = *reinterpret_cast<void**>(begin+i*profile->layout.textRecordSize);
+                if (font && field<std::uintptr_t>(font, 0) == base+profile->renderer.vanillaFontTableRva) frame->font = font;
             }
         }
         frame->flushFlags = flags; frame->flushed = true;
@@ -120,7 +119,7 @@ void onFlush(void* context, float delta, std::uint64_t flags) {
 }
 void onView(void* view, void* context) {
     Call call;
-    if (!enabled.load() || !context || field<std::uintptr_t>(context, 0) != base+contextTableRva) {
+    if (!enabled.load() || !context || field<std::uintptr_t>(context, 0) != base+profile->renderer.contextTableRva) {
         originalView(view, context); return;
     }
     if (!mailbox->tryRead(text) || !text.visible) { originalView(view, context); return; }
@@ -137,26 +136,26 @@ bool NativeDebugRenderer::install(DebugPanelMailbox& panel) noexcept {
     if (!GetModuleFileNameW(nullptr, path, 32768)) return false;
     const auto* name = std::wcsrchr(path, L'\\');
     if (_wcsicmp(name ? name+1 : path, L"Minecraft.Windows.exe") != 0) return false;
+    profile = minecraft::runningCompatibility();
+    if (!profile || !profile->features.nativeRenderer) return false;
     base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
     // Supplemental entry guards; the standalone backend has already verified the complete image hash.
-    constexpr unsigned char viewPrefix[]{0x55,0x41,0x57};
-    constexpr unsigned char flushPrefix[]{0x55,0x41,0x57};
-    if (std::memcmp(reinterpret_cast<void*>(base+viewRenderRva), viewPrefix, sizeof(viewPrefix)) ||
-        std::memcmp(reinterpret_cast<void*>(base+flushTextRva), flushPrefix, sizeof(flushPrefix))) return false;
-    if (MH_CreateHook(reinterpret_cast<void*>(base+viewRenderRva), reinterpret_cast<void*>(&onView), reinterpret_cast<void**>(&originalView)) != MH_OK) return false;
-    if (MH_CreateHook(reinterpret_cast<void*>(base+flushTextRva), reinterpret_cast<void*>(&onFlush), reinterpret_cast<void**>(&originalFlush)) != MH_OK) return false;
+    if (std::memcmp(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva), profile->signatures.viewPrefix.data(), profile->signatures.viewPrefix.size()) ||
+        std::memcmp(reinterpret_cast<void*>(base+profile->renderer.flushTextRva), profile->signatures.flushPrefix.data(), profile->signatures.flushPrefix.size())) return false;
+    if (MH_CreateHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva), reinterpret_cast<void*>(&onView), reinterpret_cast<void**>(&originalView)) != MH_OK) return false;
+    if (MH_CreateHook(reinterpret_cast<void*>(base+profile->renderer.flushTextRva), reinterpret_cast<void*>(&onFlush), reinterpret_cast<void**>(&originalFlush)) != MH_OK) return false;
     mailbox = &panel;
-    if (MH_EnableHook(reinterpret_cast<void*>(base+viewRenderRva)) != MH_OK) return false;
-    if (MH_EnableHook(reinterpret_cast<void*>(base+flushTextRva)) != MH_OK) {
-        MH_DisableHook(reinterpret_cast<void*>(base+viewRenderRva)); return false;
+    if (MH_EnableHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva)) != MH_OK) return false;
+    if (MH_EnableHook(reinterpret_cast<void*>(base+profile->renderer.flushTextRva)) != MH_OK) {
+        MH_DisableHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva)); return false;
     }
     installed_ = true; enabled.store(true); return true;
 }
 NativeDebugRenderer::~NativeDebugRenderer() {
     if (!installed_) return;
     enabled.store(false);
-    MH_DisableHook(reinterpret_cast<void*>(base+viewRenderRva));
-    MH_DisableHook(reinterpret_cast<void*>(base+flushTextRva));
+    MH_DisableHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva));
+    MH_DisableHook(reinterpret_cast<void*>(base+profile->renderer.flushTextRva));
     while (callbacks.load()) Sleep(1);
     mailbox = nullptr; // In-flight trampolines stay resident, like the other standalone hooks.
 }

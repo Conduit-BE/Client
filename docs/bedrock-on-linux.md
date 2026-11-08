@@ -1,6 +1,6 @@
 # BedrockOnLinux foundation/HUD verification
 
-For **v0.2.0-beta targeted JSON UI reload**, use [the standalone installation guide](standalone-initialization.md): inject the released DLL, configure `LegacyJsonUiOnly`, then press Ctrl+R. No Frida controller is required. Everything below describes the separate foundational DLL and historical HUD tests, not current release installation.
+For **v0.4.0-beta targeted JSON UI reload**, use [the standalone installation guide](standalone-initialization.md): inject the standalone verification DLL, then press Ctrl+R. No Frida controller is required. Everything below describes the separate foundational DLL and historical HUD tests, not current release installation.
 
 Build the Windows x64 DLL with [MinGW instructions](build.md). Configure BedrockOnLinux's built-in injector to load:
 
@@ -12,9 +12,9 @@ Ctrl+R displays a Windows confirmation dialog reading **Ctrl+R detected! JSON UI
 
 F3 toggles disk JSON UI diagnostics when Minecraft owns the foreground window. Copy development JSON UI into `%LOCALAPPDATA%\ConduitClient\ui`. Counters and metadata describe this directory; the DLL does not mount it as a resource pack. F3 does not consume the game's input. Short presses between the 30 ms polls can be missed. `F3 diagnostics shown` / `hidden` log lines confirm key detection; actual overlay visibility still needs an in-game check.
 
-The game-process log is `%LOCALAPPDATA%\ConduitClient\conduit.log`. For the current BedrockOnLinux installation it is:
+The game-process log is `%LOCALAPPDATA%\ConduitClient\logs\conduit.log`. For the current BedrockOnLinux installation it is:
 
-`$BEDROCK_DATA/compatdata/pfx/drive_c/users/<wine-user>/AppData/Local/ConduitClient/conduit.log`
+`$BEDROCK_DATA/compatdata/pfx/drive_c/users/<wine-user>/AppData/Local/ConduitClient/logs/conduit.log`
 
 Wait at least 20 seconds after the game window appears, then inspect the log. `D3D12 HUD submitted to game swap chain` means Conduit submitted its draw call, though a visual check is still required. `HUD diagnostic` reports intercepted Presents and queue submissions. If Presents are zero, the hook missed Minecraft's presentation entry point. If queue submissions are zero, the queue capture hook did not observe the game's queue. If `queue matches missed` rises, no observed direct queue matched the presented swap chain's device. Send these lines with any screenshot when reporting a visibility problem.
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ConduitClient VERSION 0.3.0 LANGUAGES C CXX)
+project(ConduitClient VERSION 0.4.0 LANGUAGES C CXX)
 
 include(CTest)
 find_package(Threads REQUIRED)
@@ -33,6 +33,9 @@ function(conduit_target target)
 endfunction()
 
 add_library(ConduitCore STATIC
+    src/minecraft/compatibility.cpp
+    src/minecraft/version.cpp
+    src/standalone/settings.cpp
     src/core/logger.cpp
     src/core/notifications.cpp
     src/core/file_monitor.cpp
@@ -44,6 +47,7 @@ target_link_libraries(ConduitCore PRIVATE nlohmann_json::nlohmann_json)
 conduit_target(ConduitCore)
 
 if(WIN32)
+    target_link_libraries(ConduitCore PUBLIC bcrypt version)
     include(FetchContent)
     if(EXISTS "${CMAKE_SOURCE_DIR}/.local/deps/minhook/CMakeLists.txt")
         set(FETCHCONTENT_SOURCE_DIR_MINHOOK "${CMAKE_SOURCE_DIR}/.local/deps/minhook")
@@ -92,12 +96,16 @@ if(WIN32)
         endif()
     endif()
 
-    option(CONDUIT_STANDALONE_LEGACY_RELOAD "Build self-initializing exact-version V5 DLL" OFF)
+    option(CONDUIT_STANDALONE_LEGACY_RELOAD "Build self-initializing targeted JSON UI DLL" OFF)
     if(CONDUIT_STANDALONE_LEGACY_RELOAD)
+        enable_language(RC)
+        set(CONDUIT_LOGO_RESOURCE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/logo.png")
+        configure_file(src/standalone/logo.rc.in ${CMAKE_CURRENT_BINARY_DIR}/conduit_logo.rc @ONLY)
         add_library(ConduitStandalone SHARED
             src/client.cpp src/platform/windows/hotkey.cpp
             src/experimental/legacy_reload.cpp src/standalone/entry.cpp
             src/platform/windows/debug_overlay.cpp src/platform/windows/native_debug_renderer.cpp)
+        target_sources(ConduitStandalone PRIVATE src/standalone/logo_resource.cpp ${CMAKE_CURRENT_BINARY_DIR}/conduit_logo.rc)
         target_include_directories(ConduitStandalone PRIVATE include src)
         target_link_libraries(ConduitStandalone PRIVATE ConduitCore minhook user32 gdi32 d3d11 dxgi bcrypt nlohmann_json::nlohmann_json)
         set_target_properties(ConduitStandalone PROPERTIES PREFIX "" OUTPUT_NAME ConduitClient
@@ -250,5 +258,23 @@ if(BUILD_TESTING)
     conduit_target(ConduitBindingCountTests)
     if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
         add_test(NAME binding_count COMMAND ConduitBindingCountTests)
+    endif()
+endif()
+
+if(BUILD_TESTING)
+    add_executable(ConduitSettingsTests tests/settings_tests.cpp)
+    target_link_libraries(ConduitSettingsTests PRIVATE ConduitCore)
+    conduit_target(ConduitSettingsTests)
+    if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+        add_test(NAME settings_migration_and_logs COMMAND ConduitSettingsTests)
+    endif()
+endif()
+
+if(BUILD_TESTING)
+    add_executable(ConduitCompatibilityTests tests/compatibility_tests.cpp)
+    target_link_libraries(ConduitCompatibilityTests PRIVATE ConduitCore)
+    conduit_target(ConduitCompatibilityTests)
+    if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+        add_test(NAME compatibility COMMAND ConduitCompatibilityTests)
     endif()
 endif()

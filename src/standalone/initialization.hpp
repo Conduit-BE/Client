@@ -1,4 +1,5 @@
 #pragma once
+#include "core/hotkey.hpp"
 #include <atomic>
 #include <cstdint>
 namespace conduit::standalone {
@@ -16,6 +17,18 @@ public:
     Phase phase() const noexcept { return phase_.load(); }
 private:
     std::atomic<Phase> phase_{Phase::Idle};
+};
+// Poll the physical chord even when unfocused so changing focus cannot synthesize a press.
+class DeactivationRequest {
+public:
+    explicit DeactivationRequest(bool initiallyDown = false) : edge_(initiallyDown) {}
+    bool update(bool chordDown, bool focused) noexcept {
+        if (edge_.update(chordDown) && focused) requested_ = true;
+        return requested_;
+    }
+private:
+    RisingEdge edge_;
+    bool requested_ = false;
 };
 // Used only under the backend mutex. No memory dereferences or native calls.
 class FrameAffinity {

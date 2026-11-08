@@ -64,9 +64,6 @@ extern "C" __declspec(dllexport) int ConduitPrototypeStartAsync(const char* watc
 extern "C" __declspec(dllexport) int ConduitPrototypeArmFromObservation(unsigned processId, unsigned threadId) {
     return conduit::experimental::armFromObservedThread(processId, threadId) ? 1 : 0;
 }
-extern "C" __declspec(dllexport) int ConduitPrototypeSetResourceFallback(unsigned observedFlag) {
-    return conduit::experimental::setResourceFallback(observedFlag) ? 1 : 0;
-}
 extern "C" __declspec(dllexport) void ConduitPrototypeDisable() {
     cancelStart.store(true);
     std::lock_guard lock(lifecycle);

@@ -1,0 +1,32 @@
+# Standalone configuration — v0.4.0-beta
+
+The data root is `%LOCALAPPDATA%/ConduitClient/` in Minecraft's Windows/Proton profile. `config.json` is created automatically as `{}`. There are currently no user-facing reload settings. Initialization and targeted JSON UI reload are automatic.
+
+On startup, the obsolete keys `enabled`, `resourcePackPath` and `reloadMode` are ignored regardless of their former values/types and removed through temporary-file replacement. Unknown keys are preserved. The old settings cannot select a broad reload path. Non-object, invalid or oversized (>16 KiB) files fail startup without changing the original. Write/replacement failures fail safely. `DISABLE` remains an operational stop sentinel outside configuration.
+
+## Automatic pack discovery
+
+On each Ctrl+R request, known Windows layouts are inspected:
+
+- `%LOCALAPPDATA%/games/com.mojang/`.
+- `%LOCALAPPDATA%/Packages/Microsoft.Minecraft*/LocalState/games/com.mojang/`.
+- `%APPDATA%/Minecraft Bedrock/Users/*/games/com.mojang/`.
+
+Within those profiles, immediate `development_resource_packs` and `resource_packs` children with both `manifest.json` and `ui/` are discovered. Symlink pack entries are skipped; discovery is limited to 256 candidates. Each candidate's JSON tree is checked on demand, including referenced files outside `ui/`. Continuous watching is disabled. Discovery and read errors prevent dispatch.
+
+Discovery identifies disk candidates, not the game's mounted pack list: inactive candidates are conservatively validated too. Arbitrary external launcher layouts, encrypted packs and world-embedded packs are not enumerated. If no candidates are found, a warning records that disk preflight is unavailable; the verified native callback still reloads Minecraft's mounted definitions. No manual-path setting is required by native reload. Confirm the active pack and actual UI result in-game. JSON syntax validation does not establish semantic correctness or native rollback guarantees.
+
+## Logging
+
+The layout is:
+
+```text
+ConduitClient/
+  config.json
+  logs/
+    standalone.log
+    native-stages.log
+    client.log
+```
+
+The logger creates missing parent directories and appends. Previous root-level logs remain untouched; new automatic logs use `logs/`. Foundation automatic logging also uses `logs/conduit.log`; explicit foundation C API clients continue to own their supplied log paths. No automatic rotation/deletion occurs. If a directory cannot be created or a log cannot be opened, initialization fails with debugger output rather than falling back to a root-level file.

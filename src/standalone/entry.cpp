@@ -3,8 +3,9 @@
 #include "core/logger.hpp"
 #include "experimental/legacy_reload.hpp"
 #include "standalone/initialization.hpp"
+#include "standalone/settings.hpp"
+#include "minecraft/compatibility.hpp"
 #include <windows.h>
-#include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -32,54 +33,58 @@ DWORD WINAPI initialize(LPVOID) noexcept {
         const auto length = GetEnvironmentVariableW(L"LOCALAPPDATA", appData, 32768);
         if (!length || length >= 32768) throw std::runtime_error("LOCALAPPDATA unavailable");
         const auto root = std::filesystem::path(appData) / L"ConduitClient";
-        log = std::make_unique<conduit::Logger>(root / L"standalone.log");
+        log = std::make_unique<conduit::Logger>(conduit::standalone::logDirectory(root) / L"standalone.log");
         log->write("info", "Standalone initialization starting; no Frida controller required");
         const auto configFile = root / L"config.json";
         const auto disableFile = root / L"DISABLE";
         if (std::filesystem::exists(disableFile)) {
             log->write("info", "DISABLE present; no hooks installed"); initialization.disable(); return 0;
         }
-        if (!std::filesystem::exists(configFile)) {
-            std::ofstream config(configFile);
-            config << "{\n  \"enabled\": true,\n  \"resourcePackPath\": \"\"\n}\n";
-            if (!config) throw std::runtime_error("Cannot create config.json");
-            throw std::runtime_error("Set resourcePackPath in config.json to the active pack root, then restart Minecraft and inject again");
-        }
-        if (std::filesystem::file_size(configFile) > 16384) throw std::runtime_error("config.json exceeds 16 KiB");
-        std::ifstream configStream(configFile);
-        const auto settings = nlohmann::json::parse(configStream);
-        configStream.close();
-        if (!settings.value("enabled", true)) {
-            log->write("info", "Disabled by config; no hooks installed"); initialization.disable(); return 0;
-        }
-        const auto watch = settings.at("resourcePackPath").get<std::string>();
-        const auto pack = std::filesystem::path(std::u8string(watch.begin(), watch.end()));
-        if (watch.empty() || !pack.is_absolute() || !std::filesystem::is_directory(pack / L"ui") ||
-            !std::filesystem::is_regular_file(pack / L"manifest.json"))
-            throw std::runtime_error("resourcePackPath must be an absolute existing pack root containing ui and manifest.json");
-        const auto modeName = settings.value("reloadMode", std::string("FullResourceReload"));
-        const auto mode = conduit::experimental::parseLegacyReloadMode(modeName);
-        log->write("info", "Selected reload mode: " + modeName);
-        auto backend = conduit::experimental::makeLegacyReloadBackend(root / L"native-stages.log", true, mode);
+        conduit::standalone::migrateSettings(configFile);
+        const auto logs = conduit::standalone::logDirectory(root);
+        wchar_t roamingData[32768]{};
+        const auto roamingLength = GetEnvironmentVariableW(L"APPDATA", roamingData, 32768);
+        const auto roaming = roamingLength && roamingLength < 32768 ? std::filesystem::path(roamingData) : std::filesystem::path{};
+        auto backend = conduit::experimental::makeLegacyReloadBackend(logs / L"native-stages.log", true);
+        debugStats.clientVersion = conduit::minecraft::runningCompatibility()->build;
         debugStats.screenMetrics = &conduit::experimental::nativeScreenMetrics();
         debugStats.diagnostics = log.get();
         backend = conduit::windows::trackDebugReloads(std::move(backend), debugStats);
-        const auto clientLog = utf8(root / L"client.log");
+        const auto clientLog = utf8(logs / L"client.log");
+        const auto watch = utf8(root); // Native engine owns mounted packs; no manual pack setting.
         ConduitConfig config{sizeof(ConduitConfig), CONDUIT_API_VERSION, watch.c_str(), clientLog.c_str(),
                              CONDUIT_HOTKEY_DEFAULT, 30, 150};
-        client = std::make_unique<conduit::Client>(config, std::function<void()>{}, std::move(backend), true, false);
+        client = std::make_unique<conduit::Client>(config, std::function<void()>{}, std::move(backend), true, false, [local = std::filesystem::path(appData), roaming, diagnostic = log.get()] {
+            try {
+                const auto packs = conduit::standalone::discoverPackRoots(local, roaming);
+                if (packs.empty()) diagnostic->write("warning", "No disk UI packs discovered; Minecraft will reload its mounted definitions without disk preflight");
+                for (const auto& pack : packs) {
+                    conduit::JsonUiRepository json;
+                    if (!json.refresh(pack, true)) { diagnostic->write("error", json.info().error); return false; }
+                }
+                return true;
+            } catch (const std::exception& error) { diagnostic->write("error", error.what()); return false; }
+        });
         if (client->start() != CONDUIT_OK) throw std::runtime_error("Client initialization failed");
         initialization.running();
         log->write("info", "Client running; waiting for verified frame affinity. See native-stages.log for automatic_backend_armed");
-        log->write("info", "Pack root (validation on request only; continuous watching disabled): " + watch);
+        log->write("info", "Automatic pack discovery on request; continuous watching disabled. Data root: " + watch);
         log->write("info", "F3 overlay enabled; native screen and control sampling active when verified");
-        try { conduit::windows::runDebugOverlay(disableFile.c_str(), debugStats); }
+        conduit::standalone::DeactivationRequest deactivation((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState('K') & 0x8000));
+        const auto shouldStop = [&] {
+            const bool chordDown = (GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState('K') & 0x8000);
+            DWORD foregroundPid{};
+            GetWindowThreadProcessId(GetForegroundWindow(), &foregroundPid);
+            return deactivation.update(chordDown, foregroundPid == GetCurrentProcessId()) || std::filesystem::exists(disableFile);
+        };
+        log->write("info", "Ctrl+K deactivates client; DLL remains pinned for callback safety");
+        try { conduit::windows::runDebugOverlay(disableFile.c_str(), debugStats, shouldStop); }
         catch (const std::exception& error) { log->write("error", std::string("Overlay stopped: ") + error.what()); }
-        while (!std::filesystem::exists(disableFile)) Sleep(250);
-        initialization.disable();
+        while (!shouldStop()) Sleep(15);
         conduit::experimental::disableLegacyReload();
         client.reset(); // Wake pending reload and join its worker before hook retirement.
         const bool retired = conduit::experimental::retireLegacyReloadHooks();
+        initialization.disable();
         log->write(retired ? "info" : "error", retired ? "Disabled; worker joined and hooks disabled; DLL stays pinned" : "Disabled; hook retirement failed; DLL stays pinned");
     } catch (const std::exception& error) {
         conduit::experimental::disableLegacyReload();

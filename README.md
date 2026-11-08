@@ -1,61 +1,35 @@
 # ConduitClient
 
-A C++20 development client for **Minecraft Bedrock Windows 1.26.60.5**, GDK x64, package **1.26.6005.0**, developed and tested through BedrockOnLinux/Proton on Linux.
+C++20 development client for Minecraft Bedrock GDK x64. **v0.4.0-beta — quality-of-life, stability, and maintainability update.** Only the previously verified Windows **1.26.60.5** image (package **1.26.6005.0**) is supported. Other images fail closed.
 
-## v0.2.0-beta — Legacy JSON UI hot reload
+Ctrl+R uses targeted legacy JSON UI reload. F3 diagnostics retain native rendering, screen detection, element/binding counts, factory statistics and breakdown, FPS, reload counters and latency. Previous versions established targeted reload in-game; this build still needs in-game regression verification.
 
-[Download v0.2.0-beta](https://github.com/zelisce/Conduit-Client/releases/tag/v0.2.0-beta). Inject the standalone `ConduitClient.dll`, save a legacy JSON UI edit, press **Ctrl+R**, then reopen the affected screen. No manual `/reload all`, Frida server, external controller or thread configuration is required.
+## Installation
 
-**The user confirmed edited UI becomes visible without visible chunk or texture refresh**, and confirmed follow-up testing. A brief freeze remains. This is an experimental pre-release for the exact tested Minecraft image; back up your worlds. Complete resource isolation and long-run stability are not guaranteed.
+Download `ConduitClient.dll`, `SHA256SUMS`, and `THIRD_PARTY_NOTICES.txt` from the [v0.4.0-beta GitHub pre-release](https://github.com/Conduit-BE/client/releases/tag/v0.4.0-beta). Verify the DLL checksum. For source builds, use [the installation and build guide](docs/standalone-initialization.md). Exit Minecraft first to retire older pinned DLLs. Configure your Windows x64 DLL injector or BedrockOnLinux injector to load only the new standalone `ConduitClient.dll`, then launch Minecraft. The foundation `bin/ConduitClient.dll` is a separate target.
 
-## Install and configure
+Initialization is automatic. No pack-path or reload-mode setting is needed. Minecraft must already have your development pack active. Save a legacy JSON UI edit, press **Ctrl+R**, then reopen the affected screen. Conduit does not mount packs, install a resource pack, or modify Minecraft's installation.
 
-Download `ConduitClient.dll`, `SHA256SUMS`, and `THIRD_PARTY_NOTICES.txt` from the release. Verify the DLL checksum.
+## Configuration and logs
 
-1. Create `%LOCALAPPDATA%\ConduitClient\config.json` inside Minecraft's Windows/Proton profile:
+`%LOCALAPPDATA%/ConduitClient/config.json` defaults to `{}`. Obsolete activation, manual pack path and reload-mode keys are ignored and removed; unknown keys are preserved. Malformed configurations fail startup without overwriting the file. See [configuration and discovery details](docs/configuration.md).
 
-   ```json
-   {
-     "enabled": true,
-     "resourcePackPath": "C:\\actual\\profile\\development_resource_packs\\your-pack",
-     "reloadMode": "LegacyJsonUiOnly"
-   }
-   ```
+Diagnostic files are appended under `%LOCALAPPDATA%/ConduitClient/logs/`: `standalone.log`, `native-stages.log`, and `client.log`. Old root-level logs are preserved. Filesystem failures are reported through the available log or Windows debugger output.
 
-   Use an absolute Windows path to the active **pack root**, containing `manifest.json` and `ui/`. Custom referenced JSON files outside `ui/` are included. The pack must already be active in Minecraft; Conduit does not mount it or edit its files. **Keep `reloadMode` explicitly set as above:** omitting it retains the broader compatibility fallback.
-2. Exit Minecraft to retire older pinned DLLs. Configure BedrockOnLinux's built-in injector or your Windows x64 `LoadLibrary` injector to load **only this release's DLL**, then launch Minecraft. Normal use needs no Frida components or exported startup call.
-3. Enter your backed-up world, save a visible JSON UI change, press **Ctrl+R**, and close/reopen its screen. Subsequent edits need no world or game restart.
+**Ctrl+K safely deactivates ConduitClient** while Minecraft owns the foreground window: F3 closes, reload requests stop, the client worker joins and native hooks are disabled. The DLL and trampolines remain resident because the existing pinned callback architecture cannot prove safe full unload. Do not force-unload it. `DISABLE` in the data root also stops it; a pre-existing file prevents hooks. Restart Minecraft to reactivate.
 
-Continuous watching and startup JSON scans are disabled. JSONC syntax validation runs on request before native dispatch; it does not guarantee Minecraft semantic validation or transactional rollback.
+## Supported implementation and limits
 
-[Full setup, build instructions, logs and troubleshooting](docs/standalone-initialization.md).
+Targeted JSON UI reload is the only native reload implementation. The obsolete broad fallback has been removed. Single-client context guards, request serialization, exact executable validation and verified thread affinity remain in place. Native work already executing cannot be safely cancelled; shutdown may wait for it. Disk syntax checks cannot guarantee transactional Minecraft rollback or semantic validity.
 
-## Modes and limitations
+The compatibility framework selects verified native addresses, structures and optional features for the exact supported executable. It does not claim support for additional builds. [Adding a version profile](docs/reverse-engineering/1.26.60-compatibility-profile.md).
 
-- **`LegacyJsonUiOnly`**: confirmed targeted native UI action, including definition loading, task synchronization and collection invalidation. No visible chunk/texture refresh was reported in testing. The first experimental implementation supports one client context; split-screen/multiple clients fail closed.
-- **`FullResourceReload`**: preserved V5 fallback. It reloads unrelated client resources/chunks, may freeze for roughly one second and may make player skins invisible. It remains the compatibility default if `reloadMode` is omitted; select it deliberately for fallback testing.
+**Main-menu logo replacement remains blocked:** the title-specific image setter and texture ownership ABI have not been verified. The original Minecraft logo remains intact on all screens. [Investigation](docs/reverse-engineering/1.26.60-title-logo.md).
 
-Both modes require the exact supported image and acquire the live owner/game thread automatically. Requests cannot overlap. Unknown contexts, unsupported builds and unexpected completion timeouts disable dispatch rather than guessing. The native UI action can wait for outstanding work; Conduit cannot safely cancel an operation already executing.
+## Development
 
-Observed targeted native callback durations were **261–357 ms** in four captured runs. These are action durations, not measured frame stalls or a controlled performance comparison. Exact repeat counts and separate skin observations were not reported.
+- [Build and lifecycle contracts](docs/build.md), [standalone setup](docs/standalone-initialization.md).
+- [v0.4.0-beta release notes and manual checks](docs/releases/v0.4.0-beta.md), [changelog](CHANGELOG.md).
+- [Targeted reload evidence](docs/reverse-engineering/1.26.60-json-ui-only-prototype.md), [project guidance](AGENTS.md), [third-party notices](THIRD_PARTY_NOTICES.txt).
 
-## Logs and disabling
-
-Logs are under `%LOCALAPPDATA%\ConduitClient\`:
-
-- `standalone.log`: configuration, selected mode and startup failures.
-- `native-stages.log`: automatic arming, native queue/dispatch/completion and faults.
-- `client.log`: Ctrl+R detection and JSON validation errors.
-
-Create `%LOCALAPPDATA%\ConduitClient\DISABLE` to prevent new requests, stop the client worker and retire its hooks. The DLL remains pinned; do not force-unload it. A pre-existing DISABLE file or `"enabled": false` prevents startup. To re-enable, change modes/configuration or recover from an initialization failure, restart Minecraft after updating settings.
-
-## Development and history
-
-- [Standalone installation and build](docs/standalone-initialization.md); [foundation API and tests](docs/build.md).
-- [Targeted native sequence and visual evidence](docs/reverse-engineering/1.26.60-json-ui-only-prototype.md).
-- [Release provenance](docs/releases/v0.2.0-beta.md); [development handoff](docs/development-handoff.md).
-- [Reverse-engineering tools](tools/reverse-engineering/README.md); [historical Frida/controller workflow](docs/experimental-legacy-reload.md).
-- [Earlier broad standalone beta](https://github.com/zelisce/Conduit-Client/releases/tag/v0.1.0-beta); [original V5 alpha](https://github.com/zelisce/Conduit-Client/releases/tag/v0.1.0-alpha.1).
-- [Project guidance](AGENTS.md), [foundation C API](include/conduit/api.h), [third-party notices](THIRD_PARTY_NOTICES.txt).
-
-The older foundation `bin/ConduitClient.dll` is a different build target; use the downloaded DLL or the standalone build output. Frida is retained only for development. Builds, logs, game executables, dumps, machine-specific configurations and analysis environments remain excluded from Git.
+Game binaries, dumps, logs and machine-specific configuration stay outside source control.

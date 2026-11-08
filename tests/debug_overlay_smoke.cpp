@@ -25,6 +25,7 @@ bool key(bool down) {
 }
 int main() {
     conduit::windows::DebugReloadStats stats;
+    stats.clientVersion = "test_build";
     conduit::ScreenMetrics screenMetrics;
     stats.screenMetrics = &screenMetrics;
     auto backend = std::make_unique<Backend>(); auto* raw = backend.get();
@@ -96,7 +97,7 @@ int main() {
     ok = panel.visible && GetForegroundWindow() == window && ok;
     std::string text = readText();
     std::cout << "Panel text: " << text << "\nPresent result: " << std::hex << chain->Present(0,0) << std::dec << "\n";
-    ok = std::string(text).find("general:\n") != std::string::npos && std::string(text).find("conduit_version: v0.3.0-beta") != std::string::npos && std::string(text).find("client_version: 1.26.60.5") != std::string::npos && std::string(text).find("reloads:") == std::string::npos && std::string(text).find("elements: 42\n  bindings: 17\n  factories:") != std::string::npos && std::string(text).find("type: \"test_screen\"") != std::string::npos && std::string(text).find("frames_per_second: Unavailable") == std::string::npos &&
+    ok = std::string(text).find("general:\n") != std::string::npos && std::string(text).find("conduit_version: " CONDUIT_DISPLAY_VERSION) != std::string::npos && std::string(text).find("client_version: test_build") != std::string::npos && std::string(text).find("reloads:") == std::string::npos && std::string(text).find("elements: 42\n  bindings: 17\n  factories:") != std::string::npos && std::string(text).find("type: \"test_screen\"") != std::string::npos && std::string(text).find("frames_per_second: Unavailable") == std::string::npos &&
         std::string(text).find("frames_per_second: ") != std::string::npos && ok;
     ok = std::string(text).find("test_factory:\n      children: 7\n      elements: 28") != std::string::npos &&
         std::string(text).find("popup #0000000000000002:\n      children: 0\n      elements: 0") != std::string::npos &&

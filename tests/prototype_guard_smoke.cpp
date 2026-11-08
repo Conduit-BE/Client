@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
     std::array<char, 1024> text{};
     snapshot(text.data(), static_cast<unsigned>(text.size()));
     const std::string result(text.data());
-    if (result.find("exact verified Bedrock 1.26.60.5") == std::string::npos) {
+    if (result.find("Unsupported Minecraft executable") == std::string::npos) {
         std::cerr << result << '\n'; return 6;
     }
     const auto asyncStart = reinterpret_cast<Start>(GetProcAddress(module, "ConduitPrototypeStartAsync"));

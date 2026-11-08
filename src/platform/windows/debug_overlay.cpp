@@ -131,7 +131,7 @@ std::unique_ptr<ReloadBackend> trackDebugReloads(std::unique_ptr<ReloadBackend> 
 namespace conduit::windows {
 namespace {
 }
-void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats) {
+void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const std::function<bool()>& stopRequested) {
     HWND game{};
     EnumWindows(findWindow, reinterpret_cast<LPARAM>(&game));
     if (!game) return;
@@ -152,7 +152,7 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats) {
     ScreenMetrics::Name loggedScreen{};
     FactoryStatistics loggedFactories{};
     std::uint64_t loggedReloads = 0, snapshotSequence = 0;
-    while (!std::filesystem::exists(disablePath) && IsWindow(game)) {
+    while (!(stopRequested && stopRequested()) && !std::filesystem::exists(disablePath) && IsWindow(game)) {
         const bool focused = GetForegroundWindow() == game && !IsIconic(game);
         const bool pressed = edge.update((GetAsyncKeyState(VK_F3) & 0x8000) != 0);
         if (pressed && focused) visible = !visible;
@@ -241,8 +241,7 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats) {
             append("\ngeneral:\n");
             append("  frames_per_second: %s\n", fps);
             append("  conduit_version: %s\n", CONDUIT_DISPLAY_VERSION);
-            // Standalone initialization verifies this exact client image before enabling F3.
-            append("  client_version: 1.26.60.5");
+            append("  client_version: %.*s", static_cast<int>(stats.clientVersion.size()), stats.clientVersion.data());
             stats.panel.publish(text, true);
             refresh = now;
         }

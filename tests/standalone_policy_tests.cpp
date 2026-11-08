@@ -1,5 +1,5 @@
 #include "standalone/initialization.hpp"
-#include "experimental/legacy_reload_mode.hpp"
+#include "experimental/legacy_reload_completion.hpp"
 #include <atomic>
 #include <iostream>
 #include <stdexcept>
@@ -9,13 +9,6 @@ using namespace conduit::standalone;
 void require(bool value) { if (!value) throw std::runtime_error("Standalone policy assertion failed"); }
 int main() {
     try {
-        using conduit::experimental::LegacyReloadMode;
-        using conduit::experimental::parseLegacyReloadMode;
-        require(parseLegacyReloadMode("FullResourceReload") == LegacyReloadMode::FullResourceReload);
-        require(parseLegacyReloadMode("LegacyJsonUiOnly") == LegacyReloadMode::LegacyJsonUiOnly);
-        bool rejected = false;
-        try { (void)parseLegacyReloadMode("typo"); } catch (const std::invalid_argument&) { rejected = true; }
-        require(rejected);
         conduit::experimental::UiReloadCompletion completion;
         require(!completion.ready() && !completion.inFlight());
         for (unsigned i = 0; i < 10; ++i) {
@@ -29,6 +22,14 @@ int main() {
             }
             require(completion.ready() && !completion.inFlight());
         }
+        DeactivationRequest deactivation(true);
+        require(!deactivation.update(true, true)); // Startup-held key.
+        require(!deactivation.update(false, true));
+        require(!deactivation.update(true, false)); // Other app owns input.
+        require(!deactivation.update(true, true)); // Focus change is not a new press.
+        require(!deactivation.update(false, true));
+        require(deactivation.update(true, true));
+        require(deactivation.update(true, true) && deactivation.update(false, false)); // Sticky stop.
         Initialization lifecycle;
         std::atomic<unsigned> winners{0};
         std::vector<std::jthread> workers;

@@ -66,7 +66,7 @@ DWORD WINAPI runAuto(LPVOID argument) {
         }
         const auto root = std::filesystem::path(appData) / L"ConduitClient";
         const auto ui = root / L"ui";
-        const auto logPath = root / L"conduit.log";
+        const auto logPath = root / L"logs" / L"conduit.log";
         std::filesystem::create_directories(ui);
         Logger logger(logPath);
         logger.write("info", "DLL attached to Minecraft.Windows.exe; automatic initialization beginning");

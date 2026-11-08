@@ -43,7 +43,6 @@ rpc.exports={
    return{state:snapshot(),retired:true,note:'Own verified MinHook API; v1 remains pinned and disabled'};
   }
   if(command.kind==='disablePrototype'){if(api)api.disable();return{state:snapshot()};}
-  if(command.kind==='configureFallback'){const configure=new NativeFunction(prototype.getExportByName('ConduitPrototypeSetResourceFallback'),'int',['uint']);const arm=new NativeFunction(prototype.getExportByName('ConduitPrototypeArmFromObservation'),'int',['uint','uint']);return{configured:configure(command.observedFlag),armed:arm(command.windowsPid,command.observedThread),state:snapshot()};}
   if(command.kind==='snapshot')return{state:snapshot()};
   throw Error('Unknown prototype control');
   } finally {controlActive=false;}

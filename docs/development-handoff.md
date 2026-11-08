@@ -1,19 +1,13 @@
-# Development handoff — v0.2.0-beta
+# Development handoff — v0.4.0-beta
 
-The current working milestone is the standalone targeted legacy JSON UI reload for exact Bedrock Windows 1.26.60.5, package 1.26.6005.0, tested through BedrockOnLinux/Proton. The user confirmed edited UI appears without visible chunk/texture refresh and confirmed follow-up testing. A brief freeze remains. Exact repeat counts, individual skin observations and frame-time measurements were not separately supplied.
+The standalone target uses only the verified targeted legacy JSON UI callback for exact Bedrock Windows 1.26.60.5, package 1.26.6005.0. Prior user tests established visible UI changes without visible chunk/texture refresh. This preparation build has not been verified in-game. See [release notes](releases/v0.4.0-beta.md) and [installation](standalone-initialization.md).
 
-Normal installation: [standalone guide](standalone-initialization.md). Set `reloadMode` explicitly to `LegacyJsonUiOnly`; missing settings retain `FullResourceReload` for compatibility. Continuous watching is disabled. No Frida controller is required.
+Version-specific native addresses/layouts/signatures reside in `src/minecraft/versions/bedrock_1_26_60_5.hpp`; runtime selection requires the exact original image hash and AMD64. No additional build is supported. The broad V5 implementation and selection API are removed. Automatic pack discovery replaces the manual path setting; old activation/path/mode keys migrate away. Automatic logs append in `logs/` under the data root.
 
-The targeted path invokes native callback RVA `0xf203e0` on a validated current client context; that callback handles lifetime references and the full UI action at `0x6583170` (load → category task barrier → collection invalidation). [Evidence, assumptions and tests](reverse-engineering/1.26.60-json-ui-only-prototype.md). Do not replace it with loader-only `0x83a190` or intermediate `0x8c4f40`, which failed earlier visual tests.
+Ctrl+K safely deactivates; permanent pinning and retained callback trampolines prevent proven full unload. The main-menu image mutation/texture ownership contract remains unverified; the logo PNG is embedded but rendering is disabled. Preserve original logos until that contract is established.
 
-The V5 broader fallback at `0x873a20` remains intact. The original alpha and first standalone beta are preserved. The first beta release is now named **v0.1.0-beta**; its original `v0.1.0-beta.1` Git tag remains a compatibility alias to the same commit. No history was rewritten.
+The targeted path invokes callback RVA `0xf203e0` on a validated current client context. That callback manages lifetime references and the complete UI action (load → category task barrier → collection invalidation). [Evidence](reverse-engineering/1.26.60-json-ui-only-prototype.md). Loader-only and intermediate task submission experiments failed earlier visual tests; do not substitute them.
 
-Ignored local preservation:
+Ignored local preservation remains under `.local/re-investigation/`, `.local/build/`, `.local/releases/`, `.local/frida-proton/`, `.local/tools/`, `.local/deps/`, and `.local/wine-conduit/`. These contain historical artifacts and machine-specific evidence, not additional current runtime features. Licensed game executables, dumps, raw logs and analysis databases must not enter Git. Never reuse recorded heap addresses or thread IDs.
 
-- `.local/re-investigation/legacy-ui-only-20261106/`: raw analysis, native events, configuration backup, checkpoint and confirmed DLL/source snapshot, with hashes in `CONFIRMED_WORKING_RESULT.json`.
-- `.local/re-investigation/legacy-prototype-v3-isolated-20261106/v5/`: original confirmed V5 snapshot and traces.
-- `.local/build/`, `.local/releases/`: generated builds and verified release assets.
-- `.local/frida-proton/`, `.local/tools/`, `.local/deps/`, `.local/wine-conduit/`: development tooling, binaries and environments.
-- Temporary Ghidra projects and licensed game executables remain machine-local and do not transfer through Git.
-
-Versioned notes and own-source tools preserve reproducible findings. Recreate analysis from the exact licensed image; never reuse heap addresses or thread IDs from saved runs. Keep raw game artifacts, logs, process dumps and user configuration out of Git. Frida documentation is a developer reference, not normal installation.
+The user authorized publication of v0.4.0-beta after build/test. Native in-game regression verification remains pending; publication does not establish native validation.

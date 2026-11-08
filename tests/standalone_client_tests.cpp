@@ -82,6 +82,31 @@ int main() {
             require(control->active == 0 && control->maxActive == 1 && control->calls == 2,
                     "worker did not join or requests were not coalesced");
         }
+        {
+            const auto watch = root.string(), log = (root / "shutdown.log").string();
+            ConduitConfig config{sizeof(ConduitConfig), CONDUIT_API_VERSION, watch.c_str(), log.c_str(), CONDUIT_HOTKEY_DISABLED, 10, 0};
+            auto backend = std::make_unique<ControlledBackend>(); auto* control = backend.get();
+            std::atomic<unsigned> validations{0};
+            conduit::Client client(config, {}, std::move(backend), true, false, [&] { ++validations; return true; });
+            require(client.start() == CONDUIT_OK && client.requestReload() == CONDUIT_OK, "shutdown test start failed");
+            {
+                std::unique_lock lock(control->mutex);
+                require(control->wake.wait_for(lock, 2s, [&] { return control->active == 1; }), "shutdown dispatch missing");
+            }
+            require(client.requestReload() == CONDUIT_OK, "pending shutdown request failed");
+            std::atomic<bool> stopping{false}, stopped{false};
+            std::jthread shutdown([&] { stopping = true; client.stop(); stopped = true; });
+            while (!stopping.load()) std::this_thread::yield();
+            std::this_thread::sleep_for(50ms);
+            const bool waited = !stopped.load();
+            {
+                std::lock_guard lock(control->mutex); control->released = true;
+            }
+            control->wake.notify_all(); shutdown.join();
+            require(waited && stopped && validations == 1 && control->calls == 1 && control->active == 0,
+                    "shutdown failed to join active operation or discard pending work");
+            require(client.requestReload() == CONDUIT_NOT_RUNNING, "shutdown accepted new reload");
+        }
         std::filesystem::remove_all(root);
         std::cout << "Client serializes concurrent requests, coalesces overlap, and joins on repeated stop\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

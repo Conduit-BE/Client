@@ -13,7 +13,7 @@ std::filesystem::path pathFromUtf8(std::string_view bytes) {
 }
 }
 Client::Client(const ConduitConfig& config, std::function<void()> onHotkey,
-               std::unique_ptr<ReloadBackend> backend, bool skipDevelopmentMetadata, bool monitorChanges)
+               std::unique_ptr<ReloadBackend> backend, bool skipDevelopmentMetadata, bool monitorChanges, std::function<bool()> validateReload)
     : watchDirectory_(std::filesystem::absolute(pathFromUtf8(config.watch_directory_utf8))),
       virtualKey_(config.hotkey_virtual_key),
       pollInterval_(config.poll_interval_ms == 0 ? 50 : config.poll_interval_ms),
@@ -22,6 +22,7 @@ Client::Client(const ConduitConfig& config, std::function<void()> onHotkey,
       monitorChanges_(monitorChanges),
       logger_(std::filesystem::absolute(pathFromUtf8(config.log_file_utf8))),
       onHotkey_(std::move(onHotkey)),
+      validateReload_(std::move(validateReload)),
       reloadManager_(backend ? std::move(backend) : std::make_unique<MinecraftReloadBackend>()) {}
 
 Client::~Client() {
@@ -133,7 +134,7 @@ void Client::run(std::stop_token stop) noexcept {
                 fileChanges_.fetch_add(request.changes.size());
                 ++attempts_;
                 try {
-                    const bool valid = jsonUi_.refresh(watchDirectory_, skipDevelopmentMetadata_);
+                    const bool valid = validateReload_ ? validateReload_() : jsonUi_.refresh(watchDirectory_, skipDevelopmentMetadata_);
                     if (!valid) { logger_.write("error", jsonUi_.info().error); }
                     else { logger_.write("info", "JSON validation completed; backend dispatch permitted"); }
                     switch (valid ? reloadManager_.reload(request) : ReloadResult::Failed) {
