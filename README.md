@@ -24,19 +24,15 @@ With targeted JSON UI hot reloading, real-time diagnostics, screen detection, an
 
 The project is actively developed, with more debugging, profiling, and development tools planned for future releases.
 
-**Latest pre-release: [v0.4.3-beta](https://github.com/Conduit-BE/client/releases/tag/v0.4.3-beta)** — fixes Ctrl+R being blocked by unrelated resource-pack JSON. Targeted UI reload now uses Minecraft’s mounted definitions directly. [Release notes and verification limits](docs/releases/v0.4.3-beta.md).
-
 ## Features
 
 - **JSON UI Hot Reload** — Reload JSON UI definitions without restarting Minecraft or rejoining a world.
 - **Developer Diagnostics** — Inspect runtime information through an in-game debug overlay.
 - **Screen Detection** — Identify the currently active Minecraft UI screen.
 - **Element Statistics** — Monitor runtime UI element counts and factory statistics.
-- **Performance Monitoring** — View FPS, reload latency, and operation counters.
-- **Title-Screen Logo** — Displays the Conduit logo in the verified vanilla main-menu image control, preserving its aspect ratio, splash text, and buttons.
 - **Version Compatibility** — A dedicated compatibility framework for verified Minecraft Bedrock versions.
 
-Diagnostics font scale and factory visibility are configurable in [config.json](docs/configuration.md#diagnostics). The default font scale is `1.0`; set `0.7` for the previous smaller text. Restart Minecraft after changing settings.
+Diagnostics font scale and factory visibility are configurable in [config.json](docs/configuration.md#diagnostics). Restart Minecraft after changing settings.
 
 ## Installation
 
