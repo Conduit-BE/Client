@@ -86,6 +86,10 @@ int main() {
             const auto watch = root.string(), log = (root / "shutdown.log").string();
             ConduitConfig config{sizeof(ConduitConfig), CONDUIT_API_VERSION, watch.c_str(), log.c_str(), CONDUIT_HOTKEY_DISABLED, 10, 0};
             auto backend = std::make_unique<ControlledBackend>(); auto* control = backend.get();
+            // Native-only admission must ignore unrelated/non-UI JSON on disk.
+            std::filesystem::create_directories(root / "texts");
+            std::ofstream(root / "texts/languages.json") << R"(["en_US"])";
+            std::ofstream(root / "unrelated.json") << "{invalid";
             std::atomic<unsigned> validations{0};
             conduit::Client client(config, {}, std::move(backend), true, false, [&] { ++validations; return true; });
             require(client.start() == CONDUIT_OK && client.requestReload() == CONDUIT_OK, "shutdown test start failed");

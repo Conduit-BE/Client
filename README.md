@@ -24,7 +24,7 @@ With targeted JSON UI hot reloading, real-time diagnostics, screen detection, an
 
 The project is actively developed, with more debugging, profiling, and development tools planned for future releases.
 
-**Latest pre-release: [v0.4.2-beta](https://github.com/Conduit-BE/client/releases/tag/v0.4.2-beta)** — adds configurable diagnostics scale, factory-section visibility and empty-factory filtering. The default overlay font scale is now `1.0`. [Release notes and verification limits](docs/releases/v0.4.2-beta.md).
+**Latest pre-release: [v0.4.3-beta](https://github.com/Conduit-BE/client/releases/tag/v0.4.3-beta)** — fixes Ctrl+R being blocked by unrelated resource-pack JSON. Targeted UI reload now uses Minecraft’s mounted definitions directly. [Release notes and verification limits](docs/releases/v0.4.3-beta.md).
 
 ## Features
 
@@ -40,7 +40,7 @@ Diagnostics font scale and factory visibility are configurable in [config.json](
 
 ## Installation
 
-1. Download the latest compatible `ConduitClient.dll` from the [v0.4.2-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.4.2-beta).
+1. Download the latest compatible `ConduitClient.dll` from the [v0.4.3-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.4.3-beta).
 2. Verify the downloaded DLL against the provided `SHA256SUMS` file.
 3. Configure your Windows x64 DLL injector or BedrockOnLinux's built-in injector to load `ConduitClient.dll`.
 4. Launch a supported Minecraft: Bedrock Edition version.
@@ -109,7 +109,7 @@ ConduitClient/
 
 - `standalone.log` — Initialization, compatibility checks, and startup errors.
 - `native-stages.log` — Native integration, dispatch operations, and internal failures.
-- `client.log` — Client operations, keyboard shortcuts, and JSON UI validation errors.
+- `client.log` — Client operations, keyboard shortcuts, and reload admission/results.
 
 The `logs` directory is created automatically when required. The `cache` PNG is generated from the embedded DLL asset; no external PNG or resource-pack installation is required.
 
@@ -133,7 +133,7 @@ Conduit Client is actively developed with a focus on stability, performance, and
 
 Useful resources:
 
-- [v0.4.2-beta release notes](docs/releases/v0.4.2-beta.md)
+- [v0.4.3-beta release notes](docs/releases/v0.4.3-beta.md)
 - [Title logo implementation and evidence](docs/title-logo-fix.md)
 - [Standalone installation and build](docs/standalone-initialization.md)
 - [Foundation API and tests](docs/build.md)

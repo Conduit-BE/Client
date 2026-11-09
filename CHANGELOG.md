@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.3-beta — 2026-11-09
+
+- Remove standalone disk JSON preflight: unrelated language arrays and inactive pack files no longer block Ctrl+R. Native safety guards remain active.
+
 ## v0.4.2-beta — 2026-11-09
 
 - Add `diagnostics.scale` (default `1.0`, native font scale), with proportional panel spacing and padding.

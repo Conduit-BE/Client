@@ -65,21 +65,14 @@ DWORD WINAPI initialize(LPVOID) noexcept {
         const auto watch = utf8(root); // Native engine owns mounted packs; no manual pack setting.
         ConduitConfig config{sizeof(ConduitConfig), CONDUIT_API_VERSION, watch.c_str(), clientLog.c_str(),
                              CONDUIT_HOTKEY_DEFAULT, 30, 150};
-        client = std::make_unique<conduit::Client>(config, std::function<void()>{}, std::move(backend), true, false, [local = std::filesystem::path(appData), roaming, diagnostic = log.get()] {
-            try {
-                const auto packs = conduit::standalone::discoverPackRoots(local, roaming);
-                if (packs.empty()) diagnostic->write("warning", "No disk UI packs discovered; Minecraft will reload its mounted definitions without disk preflight");
-                for (const auto& pack : packs) {
-                    conduit::JsonUiRepository json;
-                    if (!json.refresh(pack, true)) { diagnostic->write("error", json.info().error); return false; }
-                }
-                return true;
-            } catch (const std::exception& error) { diagnostic->write("error", error.what()); return false; }
-        });
+        // Minecraft owns the mounted definitions and their parsing. Do not gate
+        // targeted reload on unrelated or inactive resource-pack files on disk.
+        client = std::make_unique<conduit::Client>(config, std::function<void()>{},
+            std::move(backend), true, false, [] { return true; });
         if (client->start() != CONDUIT_OK) throw std::runtime_error("Client initialization failed");
         initialization.running();
         log->write("info", "Client running; waiting for verified frame affinity. See native-stages.log for automatic_backend_armed");
-        log->write("info", "Automatic pack discovery on request; continuous watching disabled. Data root: " + watch);
+        log->write("info", "Native mounted-definition reload; disk preflight and continuous watching disabled. Data root: " + watch);
         log->write("info", "F3 overlay enabled; native screen and control sampling active when verified");
         conduit::standalone::DeactivationRequest deactivation((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState('K') & 0x8000));
         auto nextTitleCheck = std::chrono::steady_clock::now();

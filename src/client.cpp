@@ -46,7 +46,7 @@ ConduitStatus Client::start() {
         workerFailed_.store(false);
         worker_ = std::jthread([this](std::stop_token stop) { run(stop); });
         running_ = true;
-        logger_.write("info", "Client started; reload requests are validated before backend dispatch");
+        logger_.write("info", "Client started; reload requests use the configured admission policy");
         return CONDUIT_OK;
     } catch (const std::exception& error) {
         monitor_.reset();
@@ -135,8 +135,8 @@ void Client::run(std::stop_token stop) noexcept {
                 ++attempts_;
                 try {
                     const bool valid = validateReload_ ? validateReload_() : jsonUi_.refresh(watchDirectory_, skipDevelopmentMetadata_);
-                    if (!valid) { logger_.write("error", jsonUi_.info().error); }
-                    else { logger_.write("info", "JSON validation completed; backend dispatch permitted"); }
+                    if (!valid) { logger_.write("error", validateReload_ ? "Reload admission policy rejected request; see standalone.log" : jsonUi_.info().error); }
+                    else { logger_.write("info", "Reload admission permitted; dispatching to backend"); }
                     switch (valid ? reloadManager_.reload(request) : ReloadResult::Failed) {
                     case ReloadResult::Succeeded:
                         ++successes_;

@@ -1,4 +1,4 @@
-# Standalone configuration — v0.4.2-beta
+# Standalone configuration — v0.4.3-beta
 
 The data root is `%LOCALAPPDATA%/ConduitClient/` in Minecraft's Windows/Proton profile. `config.json` is created automatically with the diagnostics defaults below. There are no user-facing reload settings. Initialization and targeted JSON UI reload are automatic.
 
@@ -26,17 +26,11 @@ Settings are read on startup; restart Minecraft and inject again after editing.
 
 Missing fields receive defaults; unknown fields are preserved. Invalid types or out-of-range scales fail startup with a logged error and leave the original config unchanged.
 
-## Automatic pack discovery
+## Native reload admission
 
-On each Ctrl+R request, known Windows layouts are inspected:
+Ctrl+R dispatches Minecraft's targeted JSON UI reload for its mounted definitions directly. ConduitClient does not scan or validate resource-pack JSON before dispatch, so unrelated files such as `texts/languages.json`, inactive packs and disk parse errors cannot block the shortcut. Minecraft owns definition parsing and error handling; ConduitClient does not promise rollback on native parsing errors. Continuous disk watching remains disabled. No manual resource-pack path is needed.
 
-- `%LOCALAPPDATA%/games/com.mojang/`.
-- `%LOCALAPPDATA%/Packages/Microsoft.Minecraft*/LocalState/games/com.mojang/`.
-- `%APPDATA%/Minecraft Bedrock/Users/*/games/com.mojang/`.
-
-Within those profiles, immediate `development_resource_packs` and `resource_packs` children with both `manifest.json` and `ui/` are discovered. Symlink pack entries are skipped; discovery is limited to 256 candidates. Each candidate's JSON tree is checked on demand, including referenced files outside `ui/`. Continuous watching is disabled. Discovery and read errors prevent dispatch.
-
-Discovery identifies disk candidates, not the game's mounted pack list: inactive candidates are conservatively validated too. Arbitrary external launcher layouts, encrypted packs and world-embedded packs are not enumerated. If no candidates are found, a warning records that disk preflight is unavailable; the verified native callback still reloads Minecraft's mounted definitions. No manual-path setting is required by native reload. Confirm the active pack and actual UI result in-game. JSON syntax validation does not establish semantic correctness or native rollback guarantees.
+Executable compatibility, native context/thread-affinity checks, serialization and shutdown guards still apply. The internal discovery and JSON parsing utilities remain available for foundation/development callers.
 
 ## Logging
 
