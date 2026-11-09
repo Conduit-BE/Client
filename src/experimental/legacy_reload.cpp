@@ -28,6 +28,7 @@
 namespace conduit::experimental {
 namespace {
 const minecraft::CompatibilityProfile* profile{};
+thread_local void* borrowedFrameOwner{};
 // Verified natural caller: legacy-prototype-20261106/events.jsonl; versioned reload note.
 // Complete native button.reload_ui_definitions path; see versioned UI-only evidence.
 using UiReloadCallback = void (*)(void*, void*, void*);
@@ -501,7 +502,12 @@ void onFrameBoundary(void* currentOwner) {
 #else
     const auto caller = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
 #endif
-    state.frame(currentOwner);
+    {
+        auto* previousOwner = borrowedFrameOwner;
+        borrowedFrameOwner = currentOwner;
+        struct RestoreOwner { void* previous; ~RestoreOwner() { borrowedFrameOwner = previous; } } restore{previousOwner};
+        state.frame(currentOwner);
+    }
     if (profile->features.screenMetrics && caller == state.base+profile->reload.frameCallerRva &&
         state.screenThread.load(std::memory_order_acquire) == GetCurrentThreadId())
         sampleFrontend(currentOwner); // Outside the reload mutex; owner is borrowed from this natural frame.
@@ -660,6 +666,31 @@ public:
         return state.enabled && !state.faulted && state.finished >= generation ? ReloadResult::Succeeded : ReloadResult::Failed;
     }
 };
+}
+bool isActiveTitleView(void* view, void* scene) noexcept {
+    // The owner is borrowed only while the original, naturally entered frame is
+    // executing. Never dereference a cached heap identity from a later callback.
+    if (!profile || !borrowedFrameOwner || !view || !scene) return false;
+    std::unique_lock lock(state.mutex, std::try_to_lock);
+    if (!lock.owns_lock() || !state.enabled || state.faulted ||
+        state.gameThread != GetCurrentThreadId() || !validOwner(borrowedFrameOwner)) return false;
+    const auto client = validatedUiContext(borrowedFrameOwner);
+    const auto player = readPointerAt(client, profile->layout.clientPlayerStack);
+    NativeVector playerScenes{};
+    if (!client || readPointerAt(player) != state.base+profile->reload.sceneStackTableRva ||
+        !readAt(player,profile->layout.stackScenes,&playerScenes,sizeof(playerScenes)) ||
+        playerScenes.begin != playerScenes.end || playerScenes.capacity < playerScenes.end) return false;
+    const auto owner = reinterpret_cast<std::uintptr_t>(borrowedFrameOwner);
+    const auto stack = readPointerAt(owner,profile->layout.ownerFrontendStack);
+    NativeVector entries{};
+    if (readPointerAt(stack) != state.base+profile->reload.sceneStackTableRva ||
+        !readAt(stack,profile->layout.stackScenes,&entries,sizeof(entries)) || !entries.begin ||
+        entries.end <= entries.begin || entries.capacity < entries.end ||
+        (entries.end-entries.begin)%32 || entries.end-entries.begin > 128*32) return false;
+    const auto active = readPointerAt(entries.end-24);
+    return active == reinterpret_cast<std::uintptr_t>(scene) &&
+        readPointerAt(active) == state.base+profile->reload.legacySceneTableRva &&
+        readPointerAt(active,profile->layout.sceneView) == reinterpret_cast<std::uintptr_t>(view);
 }
 ScreenMetrics& nativeScreenMetrics() noexcept { return state.screenMetrics; }
 std::unique_ptr<ReloadBackend> makeLegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame) { return std::make_unique<LegacyReloadBackend>(diagnosticLog, automaticFrame); }

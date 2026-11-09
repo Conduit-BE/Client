@@ -5,6 +5,8 @@
 #include "standalone/initialization.hpp"
 #include "standalone/settings.hpp"
 #include "minecraft/compatibility.hpp"
+#include "standalone/title_logo_asset.hpp"
+#include "platform/windows/native_title_logo.hpp"
 #include <windows.h>
 #include <filesystem>
 #include <fstream>
@@ -13,6 +15,8 @@
 
 namespace {
 conduit::standalone::Initialization initialization;
+std::atomic<bool> vanillaTitle{false};
+bool hasVanillaTitle() noexcept { return vanillaTitle.load(std::memory_order_acquire); }
 std::string utf8(const std::filesystem::path& path) {
     const auto text = path.u8string(); return {text.begin(), text.end()};
 }
@@ -46,6 +50,12 @@ DWORD WINAPI initialize(LPVOID) noexcept {
         const auto roamingLength = GetEnvironmentVariableW(L"APPDATA", roamingData, 32768);
         const auto roaming = roamingLength && roamingLength < 32768 ? std::filesystem::path(roamingData) : std::filesystem::path{};
         auto backend = conduit::experimental::makeLegacyReloadBackend(logs / L"native-stages.log", true);
+        conduit::windows::setTitleLogoGuards(&conduit::experimental::isActiveTitleView,&hasVanillaTitle);
+        try {
+            debugStats.titleLogoFile = conduit::standalone::prepareTitleLogoFile(root);
+            vanillaTitle.store(conduit::standalone::vanillaGlobalPacks(appData,roaming));
+            log->write("info", "Title logo cache prepared; replacement requires verified active vanilla title context");
+        } catch (const std::exception& error) { log->write("warning",error.what()); }
         debugStats.clientVersion = conduit::minecraft::runningCompatibility()->build;
         debugStats.screenMetrics = &conduit::experimental::nativeScreenMetrics();
         debugStats.diagnostics = log.get();
@@ -71,7 +81,13 @@ DWORD WINAPI initialize(LPVOID) noexcept {
         log->write("info", "Automatic pack discovery on request; continuous watching disabled. Data root: " + watch);
         log->write("info", "F3 overlay enabled; native screen and control sampling active when verified");
         conduit::standalone::DeactivationRequest deactivation((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState('K') & 0x8000));
+        auto nextTitleCheck = std::chrono::steady_clock::now();
         const auto shouldStop = [&] {
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= nextTitleCheck) {
+                vanillaTitle.store(conduit::standalone::vanillaGlobalPacks(appData,roaming),std::memory_order_release);
+                nextTitleCheck = now+std::chrono::milliseconds(250);
+            }
             const bool chordDown = (GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState('K') & 0x8000);
             DWORD foregroundPid{};
             GetWindowThreadProcessId(GetForegroundWindow(), &foregroundPid);
@@ -81,6 +97,7 @@ DWORD WINAPI initialize(LPVOID) noexcept {
         try { conduit::windows::runDebugOverlay(disableFile.c_str(), debugStats, shouldStop); }
         catch (const std::exception& error) { log->write("error", std::string("Overlay stopped: ") + error.what()); }
         while (!shouldStop()) Sleep(15);
+        vanillaTitle.store(false);
         conduit::experimental::disableLegacyReload();
         client.reset(); // Wake pending reload and join its worker before hook retirement.
         const bool retired = conduit::experimental::retireLegacyReloadHooks();

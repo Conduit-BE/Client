@@ -1,23 +1,23 @@
-# Standalone installation — v0.4.0-beta
+# Standalone installation — v0.4.1-beta
 
-Supported target: exact Windows Bedrock **1.26.60.5**, GDK x64, package **1.26.6005.0**. The compatibility layer reads the executable file version and checks exact image SHA-256, architecture and native guards. Unsupported hosts install no game hooks. This experimental beta still requires in-game regression verification. Download the standalone DLL, checksums, and notices from the [GitHub pre-release](https://github.com/Conduit-BE/client/releases/tag/v0.4.0-beta).
+Supported target: exact Windows Bedrock **1.26.60.5**, GDK x64, package **1.26.6005.0**. The compatibility layer reads the executable file version and checks exact image SHA-256, architecture and native guards. Unsupported hosts install no game hooks. This experimental beta still requires in-game regression verification. Download the standalone DLL, checksums, and notices from the [GitHub pre-release](https://github.com/Conduit-BE/client/releases/tag/v0.4.1-beta).
 
 ## Build
 
 ```sh
-cmake -S . -B .local/build/v0.4.0-beta -G Ninja \
+cmake -S . -B .local/build/v0.4.1-beta -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-x86_64.cmake \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DCMAKE_CROSSCOMPILING_EMULATOR=/usr/bin/wine \
   -DCONDUIT_STANDALONE_LEGACY_RELOAD=ON \
   -DCONDUIT_EXPERIMENTAL_LEGACY_RELOAD=ON
-cmake --build .local/build/v0.4.0-beta
+cmake --build .local/build/v0.4.1-beta
 WINEPREFIX="$PWD/.local/wine-conduit" WINEDEBUG=-all \
   WINEDLLOVERRIDES=mscoree,mshtml= \
-  ctest --test-dir .local/build/v0.4.0-beta --output-on-failure
+  ctest --test-dir .local/build/v0.4.1-beta --output-on-failure
 ```
 
-Inject `.local/build/v0.4.0-beta/standalone/ConduitClient.dll`. The `bin/ConduitClient.dll` output is the separate foundation target. MinGW runtimes are statically linked. No Frida controller or external PNG is required for initialization.
+Inject `.local/build/v0.4.1-beta/standalone/ConduitClient.dll`. The `bin/ConduitClient.dll` output is the separate foundation target. MinGW runtimes are statically linked. No Frida controller or external PNG is required for initialization.
 
 ## Install and use
 
@@ -37,4 +37,4 @@ This is **safe deactivation, not physical DLL unloading**. The existing implemen
 
 Check repeated Ctrl+R edits with no broad chunk/texture refresh; F3 screen/element/binding/factory counters, per-factory breakdown, FPS, reload latency and counters; Ctrl+K with F3 visible and a pending reload; continued normal play and absence of shortcut effects after deactivation. Test DISABLE independently. Confirm unsupported builds fail before hooks. Automated tests do not verify these native game behaviors.
 
-Logo replacement is blocked by an unverified title-control image/texture ABI. All original logos remain unchanged. See [logo findings](reverse-engineering/1.26.60-title-logo.md).
+The embedded Conduit PNG is imported through Minecraft’s native texture loader and substituted only for an eligible active title image draw. Its aspect ratio, splash text and menu layout are preserved. Conservative global-pack metadata checks suppress replacement for unknown/customized profiles. See [logo findings and verification limits](reverse-engineering/1.26.60-title-logo.md).

@@ -1,5 +1,6 @@
 #include "platform/windows/debug_overlay.hpp"
 #include "platform/windows/native_debug_renderer.hpp"
+#include "platform/windows/native_title_logo.hpp"
 #include "core/hotkey.hpp"
 #include "core/presentation_rate.hpp"
 #include "core/logger.hpp"
@@ -140,10 +141,15 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const 
     PresentHooks hooks;
     hooks.install(game); // Probe uses the existing HWND; it creates no desktop window.
     NativeDebugRenderer renderer;
-    const bool nativeReady = renderer.install(stats.panel);
+    const bool nativeReady = renderer.install(stats.panel,stats.titleLogoFile);
     if (stats.diagnostics) stats.diagnostics->write(nativeReady ? "info" : "warning", nativeReady ?
         "F3 rendering: Minecraft native UI font and filled rectangle; logical viewport top-left" :
         "F3 native renderer unavailable; no OS overlay fallback installed");
+    if (!stats.titleLogoFile.empty() && stats.diagnostics) stats.diagnostics->write(
+        titleLogoInstalled() ? "info" : "warning", titleLogoInstalled() ?
+        "Title logo hooks armed; waiting for verified active vanilla title and image load" :
+        "Title logo hooks unavailable; original logo retained");
+    bool loggedTitleDraw = false;
     RisingEdge edge;
     edge.update((GetAsyncKeyState(VK_F3) & 0x8000) != 0);
     bool visible = false;
@@ -153,6 +159,10 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const 
     FactoryStatistics loggedFactories{};
     std::uint64_t loggedReloads = 0, snapshotSequence = 0;
     while (!(stopRequested && stopRequested()) && !std::filesystem::exists(disablePath) && IsWindow(game)) {
+        if (!loggedTitleDraw && titleLogoRendered() && stats.diagnostics) {
+            loggedTitleDraw = true;
+            stats.diagnostics->write("info", "Title logo rendered using native texture import; other image draws preserved");
+        }
         const bool focused = GetForegroundWindow() == game && !IsIconic(game);
         const bool pressed = edge.update((GetAsyncKeyState(VK_F3) & 0x8000) != 0);
         if (pressed && focused) visible = !visible;

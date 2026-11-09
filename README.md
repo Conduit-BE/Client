@@ -24,6 +24,8 @@ With targeted JSON UI hot reloading, real-time diagnostics, screen detection, an
 
 The project is actively developed, with more debugging, profiling, and development tools planned for future releases.
 
+**Latest pre-release: [v0.4.1-beta](https://github.com/Conduit-BE/client/releases/tag/v0.4.1-beta)** — fixes the missing title-screen logo renderer. The Conduit image is embedded in the DLL and loaded through Minecraft’s native renderer. [Release notes and verification limits](docs/releases/v0.4.1-beta.md).
+
 ## Features
 
 - **JSON UI Hot Reload** — Reload JSON UI definitions without restarting Minecraft or rejoining a world.
@@ -31,11 +33,12 @@ The project is actively developed, with more debugging, profiling, and developme
 - **Screen Detection** — Identify the currently active Minecraft UI screen.
 - **Element Statistics** — Monitor runtime UI element counts and factory statistics.
 - **Performance Monitoring** — View FPS, reload latency, and operation counters.
+- **Title-Screen Logo** — Displays the Conduit logo in the verified vanilla main-menu image control, preserving its aspect ratio, splash text, and buttons.
 - **Version Compatibility** — A dedicated compatibility framework for verified Minecraft Bedrock versions.
 
 ## Installation
 
-1. Download the latest compatible `ConduitClient.dll` from the [GitHub Releases](https://github.com/Conduit-BE/client/releases).
+1. Download the latest compatible `ConduitClient.dll` from the [v0.4.1-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.4.1-beta).
 2. Verify the downloaded DLL against the provided `SHA256SUMS` file.
 3. Configure your Windows x64 DLL injector or BedrockOnLinux's built-in injector to load `ConduitClient.dll`.
 4. Launch a supported Minecraft: Bedrock Edition version.
@@ -56,7 +59,7 @@ Conduit Client provides keyboard shortcuts to simplify your JSON UI development 
 |---|---|---|
 | <code>Ctrl&nbsp;+&nbsp;R</code> | Reload JSON UI | Reloads JSON UI definitions from the active development resource pack. |
 | `F3` | Toggle Diagnostics | Shows or hides the debug overlay with screen information, UI statistics, and performance metrics. |
-| <code>Ctrl&nbsp;+&nbsp;K</code> | Eject Client | Safely deactivates or unloads Conduit Client from the running Minecraft instance. |
+| <code>Ctrl&nbsp;+&nbsp;K</code> | Eject Client | Safely deactivates Conduit Client; the DLL remains pinned until Minecraft exits. |
 
 ## Diagnostics
 
@@ -92,6 +95,8 @@ Conduit Client stores its configuration and diagnostic logs under:
 ```text
 ConduitClient/
 ├── config.json
+├── cache/
+│   └── logo-3d2b75a9f89f0a0c.png
 └── logs/
     ├── standalone.log
     ├── native-stages.log
@@ -104,7 +109,7 @@ ConduitClient/
 - `native-stages.log` — Native integration, dispatch operations, and internal failures.
 - `client.log` — Client operations, keyboard shortcuts, and JSON UI validation errors.
 
-The `logs` directory is created automatically when required.
+The `logs` directory is created automatically when required. The `cache` PNG is generated from the embedded DLL asset; no external PNG or resource-pack installation is required.
 
 ## Limitations
 
@@ -114,8 +119,9 @@ Conduit Client is currently a beta development tool and relies on native integra
 - JSON UI hot reloading targets UI definitions rather than all game resources.
 - Some UI changes may require closing and reopening the affected screen.
 - Unsupported native features are disabled rather than executed with unverified addresses.
-- DLL ejection may fall back to safe deactivation when complete unloading cannot be guaranteed.
-- The main-menu logo replacement is scoped exclusively to Minecraft's title screen.
+- Ctrl+K performs safe deactivation; physical DLL unloading is not implemented.
+- The main-menu logo replacement is guarded by the active frontend scene, exact title image source, and conservative global-pack metadata checks. Unknown/customized profiles retain original rendering.
+- Title rendering was visually checked in-game; world/loading/pause/custom-pack transitions and new-module deactivation still need manual regression verification.
 
 Features involving native Minecraft functionality may require additional in-game verification after updates.
 
@@ -125,6 +131,8 @@ Conduit Client is actively developed with a focus on stability, performance, and
 
 Useful resources:
 
+- [v0.4.1-beta release notes](docs/releases/v0.4.1-beta.md)
+- [Title logo implementation and evidence](docs/title-logo-fix.md)
 - [Standalone installation and build](docs/standalone-initialization.md)
 - [Foundation API and tests](docs/build.md)
 - [Native JSON UI reverse-engineering research](docs/reverse-engineering/1.26.60-json-ui-only-prototype.md)

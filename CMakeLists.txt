@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ConduitClient VERSION 0.4.0 LANGUAGES C CXX)
+project(ConduitClient VERSION 0.4.1 LANGUAGES C CXX)
 
 include(CTest)
 find_package(Threads REQUIRED)
@@ -105,15 +105,25 @@ if(WIN32)
             src/client.cpp src/platform/windows/hotkey.cpp
             src/experimental/legacy_reload.cpp src/standalone/entry.cpp
             src/platform/windows/debug_overlay.cpp src/platform/windows/native_debug_renderer.cpp)
-        target_sources(ConduitStandalone PRIVATE src/standalone/logo_resource.cpp ${CMAKE_CURRENT_BINARY_DIR}/conduit_logo.rc)
+        target_sources(ConduitStandalone PRIVATE src/standalone/logo_resource.cpp src/standalone/title_logo_asset.cpp
+            src/platform/windows/native_title_logo.cpp ${CMAKE_CURRENT_BINARY_DIR}/conduit_logo.rc)
         target_include_directories(ConduitStandalone PRIVATE include src)
         target_link_libraries(ConduitStandalone PRIVATE ConduitCore minhook user32 gdi32 d3d11 dxgi bcrypt nlohmann_json::nlohmann_json)
-        set_target_properties(ConduitStandalone PROPERTIES PREFIX "" OUTPUT_NAME ConduitClient
+        set(CONDUIT_STANDALONE_DLL_NAME "ConduitClient" CACHE STRING "Standalone DLL name for isolated native verification")
+        set_target_properties(ConduitStandalone PROPERTIES PREFIX "" OUTPUT_NAME "${CONDUIT_STANDALONE_DLL_NAME}"
             RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/standalone"
             ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/standalone")
         conduit_target(ConduitStandalone)
         if(BUILD_TESTING)
-            add_executable(ConduitDebugOverlaySmoke tests/debug_overlay_smoke.cpp src/platform/windows/debug_overlay.cpp src/platform/windows/native_debug_renderer.cpp)
+            add_executable(ConduitTitleLogoAssetTests tests/title_logo_asset_tests.cpp
+                src/standalone/title_logo_asset.cpp src/standalone/logo_resource.cpp ${CMAKE_CURRENT_BINARY_DIR}/conduit_logo.rc)
+            target_include_directories(ConduitTitleLogoAssetTests PRIVATE src)
+            target_link_libraries(ConduitTitleLogoAssetTests PRIVATE nlohmann_json::nlohmann_json)
+            conduit_target(ConduitTitleLogoAssetTests)
+            if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+                add_test(NAME title_logo_asset COMMAND ConduitTitleLogoAssetTests)
+            endif()
+            add_executable(ConduitDebugOverlaySmoke tests/debug_overlay_smoke.cpp src/platform/windows/debug_overlay.cpp src/platform/windows/native_debug_renderer.cpp src/platform/windows/native_title_logo.cpp)
             target_include_directories(ConduitDebugOverlaySmoke PRIVATE src)
             target_link_libraries(ConduitDebugOverlaySmoke PRIVATE ConduitCore minhook user32 gdi32 d3d11 dxgi)
             conduit_target(ConduitDebugOverlaySmoke)
@@ -276,5 +286,14 @@ if(BUILD_TESTING)
     conduit_target(ConduitCompatibilityTests)
     if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
         add_test(NAME compatibility COMMAND ConduitCompatibilityTests)
+    endif()
+endif()
+
+if(BUILD_TESTING)
+    add_executable(ConduitTitleLogoTests tests/title_logo_tests.cpp)
+    target_include_directories(ConduitTitleLogoTests PRIVATE src)
+    conduit_target(ConduitTitleLogoTests)
+    if(NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+        add_test(NAME title_logo_policy COMMAND ConduitTitleLogoTests)
     endif()
 endif()

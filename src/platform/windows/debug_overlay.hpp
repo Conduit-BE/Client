@@ -7,11 +7,13 @@
 #include <memory>
 #include <functional>
 #include <string_view>
+#include <filesystem>
 
 namespace conduit { class Logger; }
 namespace conduit::windows {
 // Written only after the real backend reports success; excludes file validation.
 struct DebugReloadStats {
+    std::filesystem::path titleLogoFile; // DLL-owned cache PNG; empty disables title replacement.
     std::string_view clientVersion = "Unavailable"; // Static selected profile metadata.
     DebugPanelMailbox panel; // Copied presentation state; native rendering reads without waiting.
     ScreenMetrics* screenMetrics = nullptr; // Immutable after start; resident backend owns it.

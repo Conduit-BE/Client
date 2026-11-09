@@ -1,4 +1,5 @@
 #include "platform/windows/native_debug_renderer.hpp"
+#include "platform/windows/native_title_logo.hpp"
 #include <windows.h>
 #include "minecraft/compatibility.hpp"
 #include <MinHook.h>
@@ -119,6 +120,7 @@ void onFlush(void* context, float delta, std::uint64_t flags) {
 }
 void onView(void* view, void* context) {
     Call call;
+    TitleLogoViewScope titleScope(view,context);
     if (!enabled.load() || !context || field<std::uintptr_t>(context, 0) != base+profile->renderer.contextTableRva) {
         originalView(view, context); return;
     }
@@ -131,7 +133,7 @@ void onView(void* view, void* context) {
     // frame's context and borrowed font cease to be accessible here.
 }
 }
-bool NativeDebugRenderer::install(DebugPanelMailbox& panel) noexcept {
+bool NativeDebugRenderer::install(DebugPanelMailbox& panel, const std::filesystem::path& logoFile) noexcept {
     wchar_t path[32768]{};
     if (!GetModuleFileNameW(nullptr, path, 32768)) return false;
     const auto* name = std::wcsrchr(path, L'\\');
@@ -149,11 +151,14 @@ bool NativeDebugRenderer::install(DebugPanelMailbox& panel) noexcept {
     if (MH_EnableHook(reinterpret_cast<void*>(base+profile->renderer.flushTextRva)) != MH_OK) {
         MH_DisableHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva)); return false;
     }
-    installed_ = true; enabled.store(true); return true;
+    installed_ = true; enabled.store(true);
+    if (!logoFile.empty()) installTitleLogo(logoFile);
+    return true;
 }
 NativeDebugRenderer::~NativeDebugRenderer() {
     if (!installed_) return;
     enabled.store(false);
+    stopTitleLogo();
     MH_DisableHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva));
     MH_DisableHook(reinterpret_cast<void*>(base+profile->renderer.flushTextRva));
     while (callbacks.load()) Sleep(1);

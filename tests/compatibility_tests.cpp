@@ -11,7 +11,7 @@ int main() {
     image.sha256 = versions::bedrock126605.sha256;
     const auto* profile = selectCompatibility(image);
     require(profile && profile->build == "1.26.60.5" && profile->features.targetedReload);
-    require(profile->features.screenMetrics && profile->features.nativeRenderer && !profile->features.mainMenuLogo);
+    require(profile->features.screenMetrics && profile->features.nativeRenderer && profile->features.mainMenuLogo);
     require(profile->reload.uiReloadCallbackRva == 0xf203e0 && profile->renderer.viewRenderRva == 0x4cb3260);
     // A matching advertised version cannot make modified code compatible.
     image.hasFileVersion = true; image.fileVersion = {1,26,60,5}; image.sha256[0] ^= 1;

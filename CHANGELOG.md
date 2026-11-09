@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.1-beta — 2026-11-09
+
+- Fix the missing main-menu logo renderer using the embedded Conduit PNG and verified native texture import.
+- Guard replacement by the live frontend scene, title image source, and conservative global-pack metadata checks.
+- Preserve logo aspect ratio and center without changing splash text or menu buttons.
+- Add private PNG cache extraction/repair, native signature validation, and title eligibility/layout tests.
+- Preserve the README redesign pulled from GitHub before release preparation.
+
+The logo implementation was visually verified in-game; remaining native regression limits are listed in [release notes](docs/releases/v0.4.1-beta.md).
+
 ## v0.4.0-beta — 2026-11-08
 
 - Automatically initialize targeted JSON UI reload; migrate obsolete activation, pack-path and mode settings.

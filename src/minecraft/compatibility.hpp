@@ -101,6 +101,11 @@ struct HookSignatures {
     std::array<unsigned char, 3> viewPrefix;
     std::array<unsigned char, 3> flushPrefix;
 };
+struct TitleLogoAddresses {
+    std::uintptr_t spriteDrawRva, drawImageRva, resourceConstructorRva, textureGetterRva, spriteTableRva;
+    std::size_t spriteOwner, spriteResource, spriteImage, resourceSize, contextScene, imageWidth, imageHeight, textureGroup;
+    std::array<unsigned char, 8> spritePrefix, drawPrefix, constructorPrefix, getterPrefix;
+};
 struct CompatibilityProfile {
     std::string_view build;
     std::array<unsigned char, 32> sha256;
@@ -109,6 +114,7 @@ struct CompatibilityProfile {
     RendererAddresses renderer;
     NativeLayout layout;
     HookSignatures signatures;
+    TitleLogoAddresses logo;
 };
 // Hash and PE architecture together identify the exact executable. File version is diagnostic metadata.
 const CompatibilityProfile* selectCompatibility(const ExecutableIdentity& identity) noexcept;
