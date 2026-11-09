@@ -45,6 +45,7 @@ DWORD WINAPI initialize(LPVOID) noexcept {
             log->write("info", "DISABLE present; no hooks installed"); initialization.disable(); return 0;
         }
         conduit::standalone::migrateSettings(configFile);
+        debugStats.settings = conduit::standalone::loadDiagnosticsSettings(configFile);
         const auto logs = conduit::standalone::logDirectory(root);
         wchar_t roamingData[32768]{};
         const auto roamingLength = GetEnvironmentVariableW(L"APPDATA", roamingData, 32768);

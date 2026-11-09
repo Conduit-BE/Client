@@ -1,6 +1,6 @@
 # DLL foundation: build and test
 
-For the current **v0.4.1-beta standalone JSON UI reload**, use [the standalone build and setup guide](standalone-initialization.md). Enable `CONDUIT_STANDALONE_LEGACY_RELOAD` and inject its `standalone/ConduitClient.dll` output. The default foundation target described below retains its unsupported native reload backend; it is a different DLL target.
+For the current **v0.4.2-beta standalone JSON UI reload**, use [the standalone build and setup guide](standalone-initialization.md). Enable `CONDUIT_STANDALONE_LEGACY_RELOAD` and inject its `standalone/ConduitClient.dll` output. The default foundation target described below retains its unsupported native reload backend; it is a different DLL target.
 
 Conduit requires CMake 3.24+, a C++20 compiler with `std::jthread`, and Windows x64 for the DLL. The portable core tests also run natively on Linux. The D3D12 presentation hook uses pinned [MinHook 1.3.4](https://github.com/TsudaKageyu/minhook). JSON syntax validation uses [nlohmann/json 3.12.0](https://github.com/nlohmann/json/tree/v3.12.0). CMake FetchContent downloads these at configure time unless checkouts exist at `.local/deps/minhook` and `.local/deps/json`.
 

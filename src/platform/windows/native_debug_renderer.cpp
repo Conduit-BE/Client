@@ -17,7 +17,7 @@ const minecraft::CompatibilityProfile* profile{};
 struct Rect { float left, right, top, bottom; };
 struct Color { float red, green, blue; };
 struct Span { const char* data; std::size_t size; };
-struct Measure { float scale = DebugPanelLayout::fontScale, spacing = 0; bool a = false, b = false; };
+struct Measure { float scale = 1.0f, spacing = 0; bool a = false, b = false; };
 static_assert(sizeof(Span) == 16 && offsetof(Measure, a) == 8);
 using ViewRender = void(*)(void*, void*);
 using FlushText = void(*)(void*, float, std::uint64_t);
@@ -63,9 +63,9 @@ void render(Frame& frame) {
         lastFontIdentity != reinterpret_cast<std::uintptr_t>(frame.font)) {
         const auto measure = [&](const char* value, std::size_t size) {
             const Span span{value, size};
-            return reinterpret_cast<Width>(base+profile->renderer.textWidthRva)(frame.font, &span, DebugPanelLayout::fontScale, false);
+            return reinterpret_cast<Width>(base+profile->renderer.textWidthRva)(frame.font, &span, text.scale, false);
         };
-        layout = layoutDebugPanel(text.text.data(), width, height, measure);
+        layout = layoutDebugPanel(text.text.data(), width, height, measure, text.scale);
         layoutRevision = text.revision; lastWidth = width; lastHeight = height;
         lastFontIdentity = reinterpret_cast<std::uintptr_t>(frame.font);
     }
@@ -89,13 +89,13 @@ void render(Frame& frame) {
     const Rect panel{layout.left, layout.left+layout.width, layout.top, layout.top+layout.height};
     const Color background{0, 0, 0}, foreground{1, 1, 1};
     reinterpret_cast<Fill>(base+profile->renderer.fillRva)(context, &panel, &background, 0.5f);
-    const Measure measure{};
+    const Measure measure{layout.fontScale};
     const int caret = -1;
     for (unsigned index = 0; index < layout.count; ++index) {
         const auto& row = layout.rows[index];
         const Span span{row.data(), std::strlen(row.data())};
-        const float y = panel.top+DebugPanelLayout::padding+index*DebugPanelLayout::lineHeight;
-        const Rect bounds{panel.left+DebugPanelLayout::padding, panel.right-DebugPanelLayout::padding, y, y+10*DebugPanelLayout::fontScale};
+        const float y = panel.top+layout.padding+index*layout.lineHeight;
+        const Rect bounds{panel.left+layout.padding, panel.right-layout.padding, y, y+10*layout.fontScale};
         reinterpret_cast<DrawText>(base+profile->renderer.drawTextRva)(context, frame.font, &bounds, &span, &foreground, 1, 0, &measure, &caret);
     }
     // Borrowed strings remain alive until this synchronous flush returns. Bit 32 prevents

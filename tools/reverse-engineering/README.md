@@ -1,6 +1,6 @@
 # Legacy JSON UI reverse-engineering utilities
 
-Normal **v0.4.1-beta** users should follow [standalone installation](../../docs/standalone-initialization.md). Download the standalone DLL from the [v0.4.1-beta pre-release](https://github.com/Conduit-BE/client/releases/tag/v0.4.1-beta). Frida and these tools are optional development aids. The confirmed targeted path and limitations are in [the UI reload evidence](../../docs/reverse-engineering/1.26.60-json-ui-only-prototype.md).
+Normal **v0.4.2-beta** users should follow [standalone installation](../../docs/standalone-initialization.md). Download the standalone DLL from the [v0.4.2-beta pre-release](https://github.com/Conduit-BE/client/releases/tag/v0.4.2-beta). Frida and these tools are optional development aids. The confirmed targeted path and limitations are in [the UI reload evidence](../../docs/reverse-engineering/1.26.60-json-ui-only-prototype.md).
 
 These are developer analysis tools, separate from ConduitClient. The static tools in the table below do not execute or inject into Minecraft; the separate Frida runtime workflow is described at the end. Keep all inputs and generated output in ignored `.local/` or a private external directory. Consult [the findings](../../docs/reverse-engineering/1.26.60-legacy-reload-path.md) for executable identity, observed coordinates, evidence limitations and the current stopping point.
 
@@ -66,6 +66,6 @@ The separate opt-in native prototype and lifecycle controller `frida-proton/run-
 
 `frida-proton/inspect-ui-owner-agent.js` captures one validated legacy owner/context/getter identity through the established Windows Frida 17.23.2/Proton transport. Set it as `CONDUIT_AGENT_PATH` for `monitor-legacy.py`. It installs one observational frame hook, refuses an already-hooked entry, makes no native calls, and detaches that hook after one capture or 20 seconds. After capture, create STOP in the monitor output directory to stop its transport helpers. Do not run it alongside Conduit's native frame hook; use saved evidence unless a fresh development observation is necessary.
 
-## v0.4.1-beta compatibility and safety
+## v0.4.2-beta compatibility and safety
 
 Native profiles live in `src/minecraft/versions/`; only the exact verified 1.26.60.5 executable is supported. [Profile evidence and extension procedure](../../docs/reverse-engineering/1.26.60-compatibility-profile.md). Ctrl+K deactivates the standalone client while retaining pinned code and trampolines. The embedded logo is now imported through the verified native loader and substituted only for guarded active-title image draws. Native texture references remain resident for deferred-render safety. [Logo investigation](../../docs/reverse-engineering/1.26.60-title-logo.md). Automatic logs now reside in `%LOCALAPPDATA%/ConduitClient/logs/`.

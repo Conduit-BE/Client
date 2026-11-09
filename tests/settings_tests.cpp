@@ -16,14 +16,28 @@ int main() {
         std::ofstream(config) << R"({"enabled":false,"resourcePackPath":17,"reloadMode":null,"future":42})";
         conduit::standalone::migrateSettings(config);
         const auto migrated = read(config);
-        require(migrated.find("enabled") == std::string::npos && migrated.find("resourcePackPath") == std::string::npos && migrated.find("reloadMode") == std::string::npos);
+        require(migrated.find("\n  \"enabled\"") == std::string::npos && migrated.find("resourcePackPath") == std::string::npos && migrated.find("reloadMode") == std::string::npos);
         require(migrated.find("future") != std::string::npos);
         conduit::standalone::migrateSettings(config); require(read(config) == migrated);
         std::ofstream(config) << "{invalid";
         bool failed = false;
         try { conduit::standalone::migrateSettings(config); } catch (...) { failed = true; }
         require(failed && read(config) == "{invalid");
-        fs::remove(config); conduit::standalone::migrateSettings(config); require(read(config) == "{}\n");
+        fs::remove(config); conduit::standalone::migrateSettings(config); require(conduit::standalone::loadDiagnosticsSettings(config).scale == 1.0f);
+        const auto defaults = conduit::standalone::loadDiagnosticsSettings(config);
+        require(defaults.factoriesEnabled && defaults.emptyFactories);
+        std::ofstream(config) << R"({"diagnostics":{"scale":0.7,"factories":{"enabled":true,"empty":false},"future":9}})";
+        conduit::standalone::migrateSettings(config);
+        const auto custom = conduit::standalone::loadDiagnosticsSettings(config);
+        require(custom.scale == 0.7f && !custom.emptyFactories);
+        require(!custom.showFactory(0,0) && custom.showFactory(1,0) && custom.showFactory(0,1));
+        auto hidden = custom; hidden.factoriesEnabled = false; require(!hidden.showFactory(1,1));
+        require(read(config).find("future") != std::string::npos);
+        for (const auto* invalid : {R"({"diagnostics":{"scale":0}})", R"({"diagnostics":{"scale":true}})", R"({"diagnostics":{"factories":{"empty":1}}})", R"({"diagnostics":null})"}) {
+            std::ofstream(config) << invalid; failed = false;
+            try { conduit::standalone::migrateSettings(config); } catch (...) { failed = true; }
+            require(failed && read(config) == invalid);
+        }
         std::ofstream(root / "standalone.log") << "old log";
         { conduit::Logger logger(conduit::standalone::logDirectory(root) / "standalone.log"); logger.write("info", "new log"); }
         require(read(root / "standalone.log") == "old log"); require(read(root / "logs/standalone.log").find("new log") != std::string::npos);

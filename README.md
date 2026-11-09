@@ -24,7 +24,7 @@ With targeted JSON UI hot reloading, real-time diagnostics, screen detection, an
 
 The project is actively developed, with more debugging, profiling, and development tools planned for future releases.
 
-**Latest pre-release: [v0.4.1-beta](https://github.com/Conduit-BE/client/releases/tag/v0.4.1-beta)** — fixes the missing title-screen logo renderer. The Conduit image is embedded in the DLL and loaded through Minecraft’s native renderer. [Release notes and verification limits](docs/releases/v0.4.1-beta.md).
+**Latest pre-release: [v0.4.2-beta](https://github.com/Conduit-BE/client/releases/tag/v0.4.2-beta)** — adds configurable diagnostics scale, factory-section visibility and empty-factory filtering. The default overlay font scale is now `1.0`. [Release notes and verification limits](docs/releases/v0.4.2-beta.md).
 
 ## Features
 
@@ -36,9 +36,11 @@ The project is actively developed, with more debugging, profiling, and developme
 - **Title-Screen Logo** — Displays the Conduit logo in the verified vanilla main-menu image control, preserving its aspect ratio, splash text, and buttons.
 - **Version Compatibility** — A dedicated compatibility framework for verified Minecraft Bedrock versions.
 
+Diagnostics font scale and factory visibility are configurable in [config.json](docs/configuration.md#diagnostics). The default font scale is `1.0`; set `0.7` for the previous smaller text. Restart Minecraft after changing settings.
+
 ## Installation
 
-1. Download the latest compatible `ConduitClient.dll` from the [v0.4.1-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.4.1-beta).
+1. Download the latest compatible `ConduitClient.dll` from the [v0.4.2-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.4.2-beta).
 2. Verify the downloaded DLL against the provided `SHA256SUMS` file.
 3. Configure your Windows x64 DLL injector or BedrockOnLinux's built-in injector to load `ConduitClient.dll`.
 4. Launch a supported Minecraft: Bedrock Edition version.
@@ -131,7 +133,7 @@ Conduit Client is actively developed with a focus on stability, performance, and
 
 Useful resources:
 
-- [v0.4.1-beta release notes](docs/releases/v0.4.1-beta.md)
+- [v0.4.2-beta release notes](docs/releases/v0.4.2-beta.md)
 - [Title logo implementation and evidence](docs/title-logo-fix.md)
 - [Standalone installation and build](docs/standalone-initialization.md)
 - [Foundation API and tests](docs/build.md)

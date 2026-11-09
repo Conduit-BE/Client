@@ -230,11 +230,12 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const 
             append("  type: \"%s\"\n", screen[0] ? screen.data() : "Unavailable");
             append("  elements: %s\n", elements);
             append("  bindings: %s\n", bindings);
-            append("  factories:%s\n", metrics.factories.available ? "" : " Unavailable");
-            if (metrics.factories.available) {
+            if (stats.settings.factoriesEnabled) append("  factories:%s\n", metrics.factories.available ? "" : " Unavailable");
+            if (stats.settings.factoriesEnabled && metrics.factories.available) {
                 const auto shown = std::min<std::size_t>(metrics.factories.detailCount, metrics.factories.details.size());
                 for (std::size_t index=0; index<shown; ++index) {
                     const auto& row = metrics.factories.details[index];
+                    if (!stats.settings.showFactory(row.controls, row.liveRoots)) continue;
                     const bool named = row.nameAvailable && row.name[0];
                     char label[160]{};
                     if (named) std::snprintf(label, sizeof(label), "%s%s", row.name.data(), row.nameTruncated ? "..." : "");
@@ -252,7 +253,7 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const 
             append("  frames_per_second: %s\n", fps);
             append("  conduit_version: %s\n", CONDUIT_DISPLAY_VERSION);
             append("  client_version: %.*s", static_cast<int>(stats.clientVersion.size()), stats.clientVersion.data());
-            stats.panel.publish(text, true);
+            stats.panel.publish(text, true, stats.settings.scale);
             refresh = now;
         }
         if (!visible || !focused) stats.panel.publish(text, false);

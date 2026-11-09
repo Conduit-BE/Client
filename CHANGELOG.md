@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.2-beta — 2026-11-09
+
+- Add `diagnostics.scale` (default `1.0`, native font scale), with proportional panel spacing and padding.
+- Add `diagnostics.factories.enabled` and `diagnostics.factories.empty` (both default `true`) for overlay presentation.
+- Validate and populate missing diagnostics settings at startup while preserving unknown fields and invalid original files.
+
 ## v0.4.1-beta — 2026-11-09
 
 - Fix the missing main-menu logo renderer using the embedded Conduit PNG and verified native texture import.

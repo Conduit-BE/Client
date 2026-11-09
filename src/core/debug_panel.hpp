@@ -12,16 +12,18 @@ struct DebugPanelText {
     std::array<char, 8192> text{};
     std::uint64_t revision = 0;
     bool visible = false;
+    float scale = 1.0f;
 };
 class DebugPanelMailbox {
 public:
-    void publish(const char* text, bool visible) {
+    void publish(const char* text, bool visible, float scale = 1.0f) {
         const std::lock_guard lock(mutex_);
-        if (state_.visible == visible && std::strcmp(state_.text.data(), text) == 0) return;
+        if (state_.visible == visible && state_.scale == scale && std::strcmp(state_.text.data(), text) == 0) return;
         const auto length = std::min(std::strlen(text), state_.text.size()-1);
         std::memcpy(state_.text.data(), text, length);
         state_.text[length] = 0;
         state_.visible = visible;
+        state_.scale = scale;
         ++state_.revision;
     }
     // Rendering never waits for the worker, and releases the lock before native calls.
@@ -40,15 +42,18 @@ struct DebugPanelLayout {
     std::array<std::array<char, 256>, maxRows> rows{};
     unsigned count = 0;
     float left = 8, top = 8, width = 0, height = 0;
-    static constexpr float padding = 4, fontScale = 0.7f, lineHeight = 8;
+    float padding = 4, fontScale = 1.0f, lineHeight = 12;
 };
 // Width is provided by Minecraft's current font, not a guessed character advance.
 // Called only when text or logical viewport changes. No Conduit heap allocations.
 template<class Measure>
-DebugPanelLayout layoutDebugPanel(const char* text, float viewportWidth, float viewportHeight, Measure measure) {
+DebugPanelLayout layoutDebugPanel(const char* text, float viewportWidth, float viewportHeight, Measure measure, float scale = 1.0f) {
     DebugPanelLayout result;
+    if (!std::isfinite(scale) || scale < 0.25f || scale > 4.0f) return result;
+    result.fontScale = scale; result.lineHeight = 12*scale; result.padding = 4*scale;
     if (!std::isfinite(viewportWidth) || !std::isfinite(viewportHeight) || viewportWidth < 40 || viewportHeight < 38) return result;
     const float widthBudget = viewportWidth-2*result.left-2*result.padding;
+    if (widthBudget <= 0 || viewportHeight-2*result.top-2*result.padding < result.lineHeight) return result;
     const auto rowBudget = std::min(DebugPanelLayout::maxRows,
         static_cast<unsigned>((viewportHeight-2*result.top-2*result.padding)/result.lineHeight));
     unsigned totalRows = 0, factoryRows = 0;

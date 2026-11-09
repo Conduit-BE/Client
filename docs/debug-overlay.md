@@ -84,3 +84,7 @@ The overlay smoke test covers named and unnamed zero-root rows, updates, automat
 Presentation checkpoint: 6/6 portable tests and the 16 other Windows/Wine regressions passed. The expanded overlay smoke passed on isolated Xvfb (1280x1024), exercising an actual constrained viewport; the desktop tiling WM had ignored earlier resize requests. The test now bases the omission assertion on actual client dimensions. A fresh standalone process's public F3 window text was compared to the same process's `standalone.log`: `container_item_factory` 7 roots / 280 controls, plus the two unnamed position IDs at 0 / 0. With long fallback owner labels, the panel may use just the structural ID to preserve numeric columns. The user's visual layout verification remains pending.
 
 Experimental DLL: `/home/zelisce/Projects/Conduit-Client/.local/build/f3-debug/standalone/ConduitClient.dll`; SHA-256 `32fc6936738ee4e23c0d792faf3874889de39919cd5698de605fc346103888e9`. No native sampler changes, additional hooks, commits, tags, pushes or releases were part of this presentation update.
+
+## Configuration
+
+See [diagnostics settings](configuration.md#diagnostics) for native font scale, factory-section visibility and empty-factory filtering. Settings load at startup; default scale is now `1.0` (previously `0.7`).

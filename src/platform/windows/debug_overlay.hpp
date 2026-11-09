@@ -2,6 +2,7 @@
 #include "core/reload_manager.hpp"
 #include "core/screen_metrics.hpp"
 #include "core/debug_panel.hpp"
+#include "core/diagnostics_settings.hpp"
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -13,6 +14,7 @@ namespace conduit { class Logger; }
 namespace conduit::windows {
 // Written only after the real backend reports success; excludes file validation.
 struct DebugReloadStats {
+    DiagnosticsSettings settings; // Immutable after initialization.
     std::filesystem::path titleLogoFile; // DLL-owned cache PNG; empty disables title replacement.
     std::string_view clientVersion = "Unavailable"; // Static selected profile metadata.
     DebugPanelMailbox panel; // Copied presentation state; native rendering reads without waiting.

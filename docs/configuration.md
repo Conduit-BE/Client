@@ -1,8 +1,30 @@
-# Standalone configuration — v0.4.1-beta
+# Standalone configuration — v0.4.2-beta
 
-The data root is `%LOCALAPPDATA%/ConduitClient/` in Minecraft's Windows/Proton profile. `config.json` is created automatically as `{}`. There are currently no user-facing reload settings. Initialization and targeted JSON UI reload are automatic.
+The data root is `%LOCALAPPDATA%/ConduitClient/` in Minecraft's Windows/Proton profile. `config.json` is created automatically with the diagnostics defaults below. There are no user-facing reload settings. Initialization and targeted JSON UI reload are automatic.
 
 On startup, the obsolete keys `enabled`, `resourcePackPath` and `reloadMode` are ignored regardless of their former values/types and removed through temporary-file replacement. Unknown keys are preserved. The old settings cannot select a broad reload path. Non-object, invalid or oversized (>16 KiB) files fail startup without changing the original. Write/replacement failures fail safely. `DISABLE` remains an operational stop sentinel outside configuration.
+
+
+## Diagnostics
+
+```json
+{
+  "diagnostics": {
+    "scale": 1.0,
+    "factories": {
+      "enabled": true,
+      "empty": true
+    }
+  }
+}
+```
+
+Settings are read on startup; restart Minecraft and inject again after editing.
+`scale` controls the F3 overlay font size, spacing and padding relative to Minecraft's native logical UI scale. `1.0` uses the native font scale; `0.7` approximates the previous smaller overlay. Supported range: 0.25–4.0. Minecraft's own GUI scaling still applies.
+
+`factories.enabled` shows or hides the entire factory section. `factories.empty: false` hides factory rows only when both live roots and controls are zero. These switches affect presentation, not sampling or diagnostic logging. Viewport clipping can still omit rows to keep the panel on screen.
+
+Missing fields receive defaults; unknown fields are preserved. Invalid types or out-of-range scales fail startup with a logged error and leave the original config unchanged.
 
 ## Automatic pack discovery
 
