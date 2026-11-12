@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string_view>
 namespace conduit::minecraft {
 struct FeatureSupport { bool targetedReload, screenMetrics, nativeRenderer, mainMenuLogo; };
@@ -108,7 +109,7 @@ struct TitleLogoAddresses {
 };
 struct CompatibilityProfile {
     std::string_view build;
-    std::array<unsigned char, 32> sha256;
+    std::array<std::uint16_t, 4> fileVersion;
     FeatureSupport features;
     ReloadAddresses reload;
     RendererAddresses renderer;
@@ -116,8 +117,11 @@ struct CompatibilityProfile {
     HookSignatures signatures;
     TitleLogoAddresses logo;
 };
-// Hash and PE architecture together identify the exact executable. File version is diagnostic metadata.
+// Select a native profile by PE architecture and file version.
 const CompatibilityProfile* selectCompatibility(const ExecutableIdentity& identity) noexcept;
 const CompatibilityProfile* runningCompatibility() noexcept;
 const CompatibilityProfile& requireRunningCompatibility();
+#ifdef _WIN32
+bool matchesMainExecutableCode(std::uintptr_t rva, std::span<const unsigned char> expected) noexcept;
+#endif
 }

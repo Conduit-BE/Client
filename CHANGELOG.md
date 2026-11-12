@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.0-beta
+
+- Add Windows GDK x64 support for Bedrock 1.26.62.1 and 1.26.63.1.
+- Select native profiles by executable file version and architecture. Check native instruction signatures before installing hooks.
+
 ## v0.4.4-beta — 2026-11-12
 
 - Recognize the exact Bedrock 1.26.60.5 GDK x64 executable patched by LeviLauncher 1.1.0.

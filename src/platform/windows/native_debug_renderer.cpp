@@ -141,9 +141,8 @@ bool NativeDebugRenderer::install(DebugPanelMailbox& panel, const std::filesyste
     profile = minecraft::runningCompatibility();
     if (!profile || !profile->features.nativeRenderer) return false;
     base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-    // Supplemental entry guards; the standalone backend has already verified the complete image hash.
-    if (std::memcmp(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva), profile->signatures.viewPrefix.data(), profile->signatures.viewPrefix.size()) ||
-        std::memcmp(reinterpret_cast<void*>(base+profile->renderer.flushTextRva), profile->signatures.flushPrefix.data(), profile->signatures.flushPrefix.size())) return false;
+    if (!minecraft::matchesMainExecutableCode(profile->renderer.viewRenderRva, profile->signatures.viewPrefix) ||
+        !minecraft::matchesMainExecutableCode(profile->renderer.flushTextRva, profile->signatures.flushPrefix)) return false;
     if (MH_CreateHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva), reinterpret_cast<void*>(&onView), reinterpret_cast<void**>(&originalView)) != MH_OK) return false;
     if (MH_CreateHook(reinterpret_cast<void*>(base+profile->renderer.flushTextRva), reinterpret_cast<void*>(&onFlush), reinterpret_cast<void**>(&originalFlush)) != MH_OK) return false;
     mailbox = &panel;

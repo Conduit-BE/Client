@@ -586,11 +586,11 @@ void install(const std::filesystem::path& diagnosticLog, bool automaticFrame) {
     if (!selected.features.targetedReload) throw std::runtime_error("Targeted JSON UI reload unavailable for this build");
     state.diagnostics = std::make_unique<Logger>(diagnosticLog);
     state.base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-    if (std::memcmp(reinterpret_cast<void*>(state.base + profile->reload.loaderRva), profile->signatures.loaderPrefix.data(), profile->signatures.loaderPrefix.size()) ||
-        std::memcmp(reinterpret_cast<void*>(state.base + profile->reload.frameRva), profile->signatures.framePrefix.data(), profile->signatures.framePrefix.size()) ||
-        std::memcmp(reinterpret_cast<void*>(state.base + profile->reload.completionRva), profile->signatures.completionPrefix.data(), profile->signatures.completionPrefix.size()))
+    if (!minecraft::matchesMainExecutableCode(profile->reload.loaderRva, profile->signatures.loaderPrefix) ||
+        !minecraft::matchesMainExecutableCode(profile->reload.frameRva, profile->signatures.framePrefix) ||
+        !minecraft::matchesMainExecutableCode(profile->reload.completionRva, profile->signatures.completionPrefix))
         throw std::runtime_error("Code is already hooked or incompatible; detach diagnostics first");
-    if (std::memcmp(reinterpret_cast<void*>(state.base + profile->reload.uiReloadCallbackRva), profile->signatures.uiCallbackPrefix.data(), profile->signatures.uiCallbackPrefix.size()))
+    if (!minecraft::matchesMainExecutableCode(profile->reload.uiReloadCallbackRva, profile->signatures.uiCallbackPrefix))
         throw std::runtime_error("Native UI callback is already hooked or incompatible");
     const auto initialized = MH_Initialize();
     if (initialized != MH_OK) throw std::runtime_error("Cannot initialize private hook library");
@@ -626,13 +626,12 @@ void install(const std::filesystem::path& diagnosticLog, bool automaticFrame) {
     state.enabled = true;
     diagnostic("backend_enabled waiting_for_live_owner_affinity");
     lock.unlock();
-    const bool screenCompatible = !std::memcmp(reinterpret_cast<void*>(state.base + profile->reload.screenNameRva),
-        profile->signatures.screenPrefix.data(), profile->signatures.screenPrefix.size());
+    const bool screenCompatible = minecraft::matchesMainExecutableCode(profile->reload.screenNameRva, profile->signatures.screenPrefix);
     if (profile->features.screenMetrics && automaticFrame && screenCompatible &&
         MH_CreateHook(reinterpret_cast<void*>(state.base + profile->reload.screenNameRva), reinterpret_cast<void*>(&observeScreenName),
             reinterpret_cast<void**>(&state.screenName)) == MH_OK) {
         if (MH_EnableHook(reinterpret_cast<void*>(state.base + profile->reload.screenNameRva)) == MH_OK) {
-            diagnostic("native_screen_observer_installed primary_caller=0x65b0119 sample_ms=250");
+            diagnostic("native_screen_observer_installed sample_ms=250");
         } else {
             diagnostic("native_screen_observer_enable_failed reload_hooks_preserved");
         }

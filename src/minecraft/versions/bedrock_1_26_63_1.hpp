@@ -1,0 +1,62 @@
+#pragma once
+#include "minecraft/versions/bedrock_1_26_62_1.hpp"
+// See docs/reverse-engineering/1.26.63-compatibility-profile.md.
+namespace conduit::minecraft::versions {
+inline constexpr CompatibilityProfile bedrock126631{
+    "1.26.63.1",
+    {1,26,63,1},
+    {true, true, true, true},
+    {
+        .loaderRva = 0x83a0a0,
+        .frameRva = 0x878f40,
+        .frameCallerRva = 0x83274,
+        .completionRva = 0x8f5fc0,
+        .ownerTableRva = 0xf092b50,
+        .callableTableRva = 0xf095210,
+        .uiReloadCallbackRva = 0xf20000,
+        .clientTableRva = 0xf2ba310,
+        .clientOwnerGetterRva = 0x1a58520,
+        .clientCacheGetterRva = 0x56ef30,
+        .uiWaitRva = 0xde790,
+        .screenNameRva = 0x56cef0,
+        .sceneStackTableRva = 0xf0839b0,
+        .primaryScreenNameCallerRva = 0x65b0a79,
+        .legacySceneTableRva = 0xf20fc40,
+        .visualTreeTableRva = 0xf20a4a0,
+        .factoryComponentTableRva = 0xf0fdad0,
+        .factoryComponentMaskRva = 0x128f7dc8,
+        .bindingComponentMaskRva = 0x128f7e28,
+        .bindingComponentTableRva = 0xf0fd950,
+        .serviceTableRva = 0xefcb210,
+        .serviceMethodRva = 0xda940,
+        .contextTableRva = 0xf0fa4e0,
+        .ownerWaitRva = 0x8ac570,
+        .playerStackGetterRva = 0x65b49f0,
+        .frontendStackGetterRva = 0x893840,
+        .sceneNameGetterRva = 0x56ca20,
+    },
+    {
+        .viewRenderRva = 0x4cb3190,
+        .flushTextRva = 0x6c0bb90,
+        .contextTableRva = 0xf2d28a0,
+        .vanillaFontTableRva = 0xf0eb880,
+        .textWidthRva = 0xe6ba60,
+        .setClipRva = 0x6c11fd0,
+        .fillRva = 0x6c11da0,
+        .drawTextRva = 0x6c0b5f0,
+    },
+    bedrock126605.layout,
+    bedrock126605.signatures,
+    {
+        .spriteDrawRva = 0x1c4a170, .drawImageRva = 0x6c0d960,
+        .resourceConstructorRva = 0x394590, .textureGetterRva = 0x6c0ef60,
+        .spriteTableRva = 0xf10dbf0,
+        .spriteOwner = 8, .spriteResource = 0x20, .spriteImage = 0x118,
+        .resourceSize = 56, .contextScene = 0x120, .imageWidth = 0x10, .imageHeight = 0x14, .textureGroup = 0x58,
+        .spritePrefix = {0x48,0x83,0xec,0x68,0x49,0x89,0xd2,0x48},
+        .drawPrefix = {0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41},
+        .constructorPrefix = {0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54},
+        .getterPrefix = {0x55,0x56,0x57,0x53,0x48,0x83,0xec,0x58},
+    }
+};
+}

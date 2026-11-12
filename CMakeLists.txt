@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ConduitClient VERSION 0.4.4 LANGUAGES C CXX)
+project(ConduitClient VERSION 0.5.0 LANGUAGES C CXX)
 
 include(CTest)
 find_package(Threads REQUIRED)
@@ -47,7 +47,7 @@ target_link_libraries(ConduitCore PRIVATE nlohmann_json::nlohmann_json)
 conduit_target(ConduitCore)
 
 if(WIN32)
-    target_link_libraries(ConduitCore PUBLIC bcrypt version)
+    target_link_libraries(ConduitCore PUBLIC version)
     include(FetchContent)
     if(EXISTS "${CMAKE_SOURCE_DIR}/.local/deps/minhook/CMakeLists.txt")
         set(FETCHCONTENT_SOURCE_DIR_MINHOOK "${CMAKE_SOURCE_DIR}/.local/deps/minhook")
@@ -81,7 +81,7 @@ if(WIN32)
             src/experimental/legacy_reload.cpp
             src/experimental/prototype_entry.cpp)
         target_include_directories(ConduitReloadPrototype PRIVATE include src)
-        target_link_libraries(ConduitReloadPrototype PRIVATE ConduitCore minhook user32 bcrypt)
+        target_link_libraries(ConduitReloadPrototype PRIVATE ConduitCore minhook user32)
         set(CONDUIT_EXPERIMENTAL_DLL_NAME "ConduitReloadPrototype" CACHE STRING "Prototype DLL name; use a fresh name for in-process iterations")
         set_target_properties(ConduitReloadPrototype PROPERTIES PREFIX "" OUTPUT_NAME "${CONDUIT_EXPERIMENTAL_DLL_NAME}")
         conduit_target(ConduitReloadPrototype)
@@ -108,7 +108,7 @@ if(WIN32)
         target_sources(ConduitStandalone PRIVATE src/standalone/logo_resource.cpp src/standalone/title_logo_asset.cpp
             src/platform/windows/native_title_logo.cpp ${CMAKE_CURRENT_BINARY_DIR}/conduit_logo.rc)
         target_include_directories(ConduitStandalone PRIVATE include src)
-        target_link_libraries(ConduitStandalone PRIVATE ConduitCore minhook user32 gdi32 d3d11 dxgi bcrypt nlohmann_json::nlohmann_json)
+        target_link_libraries(ConduitStandalone PRIVATE ConduitCore minhook user32 gdi32 d3d11 dxgi nlohmann_json::nlohmann_json)
         set(CONDUIT_STANDALONE_DLL_NAME "ConduitClient" CACHE STRING "Standalone DLL name for isolated native verification")
         set_target_properties(ConduitStandalone PROPERTIES PREFIX "" OUTPUT_NAME "${CONDUIT_STANDALONE_DLL_NAME}"
             RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/standalone"

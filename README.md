@@ -36,9 +36,9 @@ Diagnostics font scale and factory visibility are configurable in [config.json](
 
 ## Installation
 
-1. Download the latest compatible `ConduitClient.dll` from the [v0.4.4-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.4.4-beta).
+1. Download the latest compatible `ConduitClient.dll` from the [v0.5.0-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.5.0-beta).
 2. Verify the downloaded DLL against the provided `SHA256SUMS` file.
-3. Configure your Windows x64 DLL injector or BedrockOnLinux's built-in injector to load `ConduitClient.dll`. On LeviLauncher 1.1.0, import it as a `preload-native` mod in the 1.26.60.05 GDK instance.
+3. Configure your Windows x64 DLL injector or BedrockOnLinux's built-in injector to load `ConduitClient.dll`. On LeviLauncher 1.1.0, import it as a `preload-native` mod in a supported GDK instance.
 4. Launch a supported Minecraft: Bedrock Edition version.
 5. Open a world with your development resource pack enabled.
 6. Modify a JSON UI file and press **Ctrl + R** to reload its definitions.
@@ -78,9 +78,7 @@ Conduit Client uses a version-aware compatibility system to manage native integr
 
 Each supported Minecraft version requires a verified compatibility profile containing the necessary native addresses, structures, and feature availability.
 
-The framework is designed to support multiple Minecraft versions within a single DLL in the future.
-
-**Current verified target:** Minecraft Bedrock `1.26.60.5`.
+**Supported Bedrock GDK x64 builds:** `1.26.60.5`, `1.26.62.1`, and `1.26.63.1`.
 
 Unsupported versions are rejected safely rather than attempting to execute unverified native functionality.
 
@@ -129,7 +127,7 @@ Conduit Client is actively developed with a focus on stability, performance, and
 
 Useful resources:
 
-- [v0.4.4-beta release notes](docs/releases/v0.4.4-beta.md)
+- [v0.5.0-beta release notes](docs/releases/v0.5.0-beta.md)
 - [Title logo implementation and evidence](docs/title-logo-fix.md)
 - [Standalone installation and build](docs/standalone-initialization.md)
 - [Foundation API and tests](docs/build.md)

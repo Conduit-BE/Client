@@ -169,12 +169,10 @@ bool installTitleLogo(std::filesystem::path imageFile) noexcept {
         base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
         const auto& logo = profile->logo;
         if (logo.resourceSize != resource.size()) return false;
-        const auto matches = [](std::uintptr_t rva,const auto& prefix) {
-            return rva && readable(reinterpret_cast<void*>(base+rva),prefix.size()) &&
-                std::memcmp(reinterpret_cast<void*>(base+rva),prefix.data(),prefix.size()) == 0;
-        };
-        if (!matches(logo.spriteDrawRva,logo.spritePrefix) || !matches(logo.drawImageRva,logo.drawPrefix) ||
-            !matches(logo.resourceConstructorRva,logo.constructorPrefix) || !matches(logo.textureGetterRva,logo.getterPrefix)) return false;
+        if (!minecraft::matchesMainExecutableCode(logo.spriteDrawRva,logo.spritePrefix) ||
+            !minecraft::matchesMainExecutableCode(logo.drawImageRva,logo.drawPrefix) ||
+            !minecraft::matchesMainExecutableCode(logo.resourceConstructorRva,logo.constructorPrefix) ||
+            !minecraft::matchesMainExecutableCode(logo.textureGetterRva,logo.getterPrefix)) return false;
         auto* spriteTarget = reinterpret_cast<void*>(base+logo.spriteDrawRva);
         auto* imageTarget = reinterpret_cast<void*>(base+logo.drawImageRva);
         if (MH_CreateHook(spriteTarget,reinterpret_cast<void*>(&onSprite),reinterpret_cast<void**>(&originalSprite)) != MH_OK) return false;
