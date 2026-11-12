@@ -134,8 +134,11 @@ namespace {
 }
 void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const std::function<bool()>& stopRequested) {
     HWND game{};
-    EnumWindows(findWindow, reinterpret_cast<LPARAM>(&game));
-    if (!game) return;
+    while (!game) {
+        if ((stopRequested && stopRequested()) || std::filesystem::exists(disablePath)) return;
+        EnumWindows(findWindow, reinterpret_cast<LPARAM>(&game));
+        if (!game) Sleep(50);
+    }
     gameWindow.store(game);
     char text[8192]{};
     PresentHooks hooks;

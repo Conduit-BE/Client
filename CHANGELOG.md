@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.4-beta — 2026-11-12
+
+- Recognize the exact Bedrock 1.26.60.5 GDK x64 executable patched by LeviLauncher 1.1.0.
+- Wait for the Minecraft window before installing the diagnostics renderer, so F3 can initialize when the DLL loads at game startup.
+
 ## v0.4.3-beta — 2026-11-09
 
 - Remove standalone disk JSON preflight: unrelated language arrays and inactive pack files no longer block Ctrl+R. Native safety guards remain active.

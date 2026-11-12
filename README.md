@@ -36,9 +36,9 @@ Diagnostics font scale and factory visibility are configurable in [config.json](
 
 ## Installation
 
-1. Download the latest compatible `ConduitClient.dll` from the [v0.4.3-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.4.3-beta).
+1. Download the latest compatible `ConduitClient.dll` from the [v0.4.4-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.4.4-beta).
 2. Verify the downloaded DLL against the provided `SHA256SUMS` file.
-3. Configure your Windows x64 DLL injector or BedrockOnLinux's built-in injector to load `ConduitClient.dll`.
+3. Configure your Windows x64 DLL injector or BedrockOnLinux's built-in injector to load `ConduitClient.dll`. On LeviLauncher 1.1.0, import it as a `preload-native` mod in the 1.26.60.05 GDK instance.
 4. Launch a supported Minecraft: Bedrock Edition version.
 5. Open a world with your development resource pack enabled.
 6. Modify a JSON UI file and press **Ctrl + R** to reload its definitions.
@@ -129,7 +129,7 @@ Conduit Client is actively developed with a focus on stability, performance, and
 
 Useful resources:
 
-- [v0.4.3-beta release notes](docs/releases/v0.4.3-beta.md)
+- [v0.4.4-beta release notes](docs/releases/v0.4.4-beta.md)
 - [Title logo implementation and evidence](docs/title-logo-fix.md)
 - [Standalone installation and build](docs/standalone-initialization.md)
 - [Foundation API and tests](docs/build.md)

@@ -5,9 +5,11 @@
 namespace conduit::minecraft {
 namespace { std::atomic<const CompatibilityProfile*> selected{}; }
 const CompatibilityProfile* selectCompatibility(const ExecutableIdentity& identity) noexcept {
-    // PE machine AMD64; exact original image hash is stronger than marketing/file version metadata.
+    // Select by exact AMD64 image identity, independent of file version metadata.
     if (identity.machine != 0x8664) return nullptr;
-    if (identity.sha256 == versions::bedrock126605.sha256) return &versions::bedrock126605;
+    if (identity.sha256 == versions::bedrock126605.sha256 ||
+        identity.sha256 == versions::bedrock126605LeviLauncherSha256)
+        return &versions::bedrock126605;
     return nullptr;
 }
 const CompatibilityProfile* runningCompatibility() noexcept { return selected.load(std::memory_order_acquire); }
