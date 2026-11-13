@@ -11,15 +11,15 @@ namespace conduit::standalone {
 namespace {
 DiagnosticsSettings parseDiagnostics(const nlohmann::json& settings) {
     DiagnosticsSettings result;
-    if (!settings.contains("diagnostics")) return result;
-    const auto& diagnostics = settings.at("diagnostics");
+    const auto diagnostics = settings.value("diagnostics", nlohmann::json::object());
     if (!diagnostics.is_object()) throw std::runtime_error("diagnostics must be an object");
-    if (diagnostics.contains("scale")) {
-        const auto& scale = diagnostics.at("scale");
-        if (!scale.is_number()) throw std::runtime_error("diagnostics.scale must be a number between 0.25 and 4");
+    const bool hasUiScale = settings.contains("ui_scale");
+    if (hasUiScale || diagnostics.contains("scale")) {
+        const auto& scale = hasUiScale ? settings.at("ui_scale") : diagnostics.at("scale");
+        if (!scale.is_number()) throw std::runtime_error("ui_scale must be a number between 0.25 and 4");
         const double value = scale.get<double>();
-        if (!std::isfinite(value) || value < 0.25 || value > 4) throw std::runtime_error("diagnostics.scale must be between 0.25 and 4");
-        result.scale = static_cast<float>(value);
+        if (!std::isfinite(value) || value < 0.25 || value > 4) throw std::runtime_error("ui_scale must be between 0.25 and 4");
+        result.uiScale = static_cast<float>(value);
     }
     if (diagnostics.contains("factories")) {
         const auto& factories = diagnostics.at("factories");
@@ -55,7 +55,8 @@ void migrateSettings(const std::filesystem::path& file) {
     const auto diagnostics = parseDiagnostics(settings); // Validate before replacing the original file.
     auto& section = settings["diagnostics"];
     if (section.is_null()) section = nlohmann::json::object();
-    section["scale"] = diagnostics.scale;
+    settings["ui_scale"] = diagnostics.uiScale;
+    section.erase("scale");
     auto& factories = section["factories"];
     if (factories.is_null()) factories = nlohmann::json::object();
     factories["enabled"] = diagnostics.factoriesEnabled;

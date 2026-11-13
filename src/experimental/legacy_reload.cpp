@@ -13,6 +13,8 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
+#include <cstdio>
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>
@@ -666,7 +668,7 @@ public:
     }
 };
 }
-bool isActiveTitleView(void* view, void* scene) noexcept {
+static bool isActiveView(void* view, void* scene, bool frontendOnly) noexcept {
     // The owner is borrowed only while the original, naturally entered frame is
     // executing. Never dereference a cached heap identity from a later callback.
     if (!profile || !borrowedFrameOwner || !view || !scene) return false;
@@ -678,9 +680,11 @@ bool isActiveTitleView(void* view, void* scene) noexcept {
     NativeVector playerScenes{};
     if (!client || readPointerAt(player) != state.base+profile->reload.sceneStackTableRva ||
         !readAt(player,profile->layout.stackScenes,&playerScenes,sizeof(playerScenes)) ||
-        playerScenes.begin != playerScenes.end || playerScenes.capacity < playerScenes.end) return false;
+        playerScenes.end < playerScenes.begin || playerScenes.capacity < playerScenes.end ||
+        (frontendOnly && playerScenes.begin != playerScenes.end)) return false;
     const auto owner = reinterpret_cast<std::uintptr_t>(borrowedFrameOwner);
-    const auto stack = readPointerAt(owner,profile->layout.ownerFrontendStack);
+    const auto stack = playerScenes.begin != playerScenes.end ? player :
+        readPointerAt(owner,profile->layout.ownerFrontendStack);
     NativeVector entries{};
     if (readPointerAt(stack) != state.base+profile->reload.sceneStackTableRva ||
         !readAt(stack,profile->layout.stackScenes,&entries,sizeof(entries)) || !entries.begin ||
@@ -690,6 +694,79 @@ bool isActiveTitleView(void* view, void* scene) noexcept {
     return active == reinterpret_cast<std::uintptr_t>(scene) &&
         readPointerAt(active) == state.base+profile->reload.legacySceneTableRva &&
         readPointerAt(active,profile->layout.sceneView) == reinterpret_cast<std::uintptr_t>(view);
+}
+bool isActiveTitleView(void* view, void* scene) noexcept {
+    return isActiveView(view, scene, true);
+}
+bool inspectHoveredControl(void* view, void* scene, float x, float y, HoveredControl& result) noexcept {
+    if (!isActiveView(view, scene, false)) return false;
+    // Verified for all three profiles. See docs/reverse-engineering/1.26.60-hover-inspector.md.
+    constexpr std::size_t positionOffset = 0x10, flagsOffset = 0x18, sizeOffset = 0x48, layerOffset = 0x68;
+    constexpr unsigned positionDirty = 1, visibleMask = 0xc;
+    const auto tree = readPointerAt(reinterpret_cast<std::uintptr_t>(view), profile->layout.viewTree);
+    if (readPointerAt(tree) != state.base + profile->reload.visualTreeTableRva) return false;
+    struct Point { float x, y; };
+    std::uintptr_t selected = 0;
+    unsigned remaining = 8192;
+    const auto deadline = ScreenMetrics::Clock::now() + controlSampleBudget;
+    const auto visit = [&](auto&& self, std::uintptr_t node, std::int64_t parentLayer, unsigned depth) -> bool {
+        if (!node || !remaining || depth >= 128 ||
+            (remaining % 64 == 0 && ScreenMetrics::Clock::now() >= deadline)) return false;
+        --remaining;
+        unsigned char flags{};
+        std::int32_t layer{};
+        if (!readAt(node, flagsOffset, &flags, sizeof(flags))) return false;
+        if ((flags & visibleMask) != visibleMask) return true;
+        if (!readAt(node, layerOffset, &layer, sizeof(layer))) return false;
+        const auto effectiveLayer = parentLayer + layer;
+        Point position{}, size{};
+        if (!(flags & positionDirty) && (!selected || effectiveLayer >= result.layer) &&
+            readAt(node, positionOffset, &position, sizeof(position)) &&
+            readAt(node, sizeOffset, &size, sizeof(size))) {
+            const float right = position.x + size.x, bottom = position.y + size.y;
+            if (std::isfinite(position.x) && std::isfinite(position.y) &&
+                std::isfinite(right) && std::isfinite(bottom) && size.x != 0 && size.y != 0 &&
+                x >= std::min(position.x, right) && x < std::max(position.x, right) &&
+                y >= std::min(position.y, bottom) && y < std::max(position.y, bottom)) {
+                selected = node;
+                result.x = position.x; result.y = position.y;
+                result.width = size.x; result.height = size.y;
+                result.layer = effectiveLayer;
+                result.visible = (flags & visibleMask) == visibleMask;
+            }
+        }
+        NativeVector children{};
+        if (!readAt(node, profile->layout.controlChildren, &children, sizeof(children)) ||
+            children.end < children.begin || children.capacity < children.end ||
+            (children.end - children.begin) % sizeof(SharedControl)) return false;
+        const auto count = (children.end - children.begin) / sizeof(SharedControl);
+        if (count > remaining) return false;
+        for (std::size_t index = 0; index < count; ++index) {
+            if (!self(self, readPointerAt(children.begin, index * sizeof(SharedControl)), effectiveLayer, depth + 1))
+                return false;
+        }
+        return true;
+    };
+    const auto root = readPointerAt(tree, 8);
+    if (!visit(visit, root, 0, 0) || !selected) return false;
+    bool truncated = false;
+    if (!copyControlName(selected, result.name, truncated) || !result.name[0])
+        std::snprintf(result.name.data(), result.name.size(), "(unnamed)");
+    NativeVector components{};
+    if (readAt(selected, profile->layout.controlComponents + sizeof(std::uint64_t), &components, sizeof(components)) &&
+        components.end >= components.begin && components.capacity >= components.end &&
+        (components.end - components.begin) % sizeof(std::uintptr_t) == 0 &&
+        components.end - components.begin <= 64 * sizeof(std::uintptr_t)) {
+        for (auto entry = components.begin; entry < components.end; entry += sizeof(std::uintptr_t)) {
+            const auto table = readPointerAt(readPointerAt(entry));
+            if (table == state.base + profile->logo.spriteTableRva) {
+                result.type = "image";
+                break;
+            }
+            if (table == state.base + profile->reload.factoryComponentTableRva) result.type = "factory";
+        }
+    }
+    return true;
 }
 ScreenMetrics& nativeScreenMetrics() noexcept { return state.screenMetrics; }
 std::unique_ptr<ReloadBackend> makeLegacyReloadBackend(const std::filesystem::path& diagnosticLog, bool automaticFrame) { return std::make_unique<LegacyReloadBackend>(diagnosticLog, automaticFrame); }

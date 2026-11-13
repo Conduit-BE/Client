@@ -9,8 +9,8 @@ On startup, the obsolete keys `enabled`, `resourcePackPath` and `reloadMode` are
 
 ```json
 {
+  "ui_scale": 1.0,
   "diagnostics": {
-    "scale": 1.0,
     "factories": {
       "enabled": true,
       "empty": true
@@ -20,7 +20,7 @@ On startup, the obsolete keys `enabled`, `resourcePackPath` and `reloadMode` are
 ```
 
 Settings are read on startup; restart Minecraft and inject again after editing.
-`scale` controls the F3 overlay font size, spacing and padding relative to Minecraft's native logical UI scale. `1.0` uses the native font scale; `0.7` approximates the previous smaller overlay. Supported range: 0.25–4.0. Minecraft's own GUI scaling still applies.
+`ui_scale` controls the font size, spacing, and padding of both the F3 diagnostics and the F5 tooltip. It accepts values from 0.25 to 4.0, with 1.0 using Minecraft's native UI scale. On startup, Conduit moves an existing `diagnostics.scale` value to `ui_scale`. If both keys are present, `ui_scale` takes precedence.
 
 `factories.enabled` shows or hides the entire factory section. `factories.empty: false` hides factory rows only when both live roots and controls are zero. These switches affect presentation, not sampling or diagnostic logging. Viewport clipping can still omit rows to keep the panel on screen.
 

@@ -144,7 +144,8 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const 
     PresentHooks hooks;
     hooks.install(game); // Probe uses the existing HWND; it creates no desktop window.
     NativeDebugRenderer renderer;
-    const bool nativeReady = renderer.install(stats.panel,stats.titleLogoFile);
+    const bool nativeReady = renderer.install(stats.panel, stats.titleLogoFile, game, stats.inspectHoveredControl,
+                                              stats.settings.uiScale);
     if (stats.diagnostics) stats.diagnostics->write(nativeReady ? "info" : "warning", nativeReady ?
         "F3 rendering: Minecraft native UI font and filled rectangle; logical viewport top-left" :
         "F3 native renderer unavailable; no OS overlay fallback installed");
@@ -154,8 +155,11 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const 
         "Title logo hooks unavailable; original logo retained");
     bool loggedTitleDraw = false;
     RisingEdge edge;
+    RisingEdge hoverEdge;
     edge.update((GetAsyncKeyState(VK_F3) & 0x8000) != 0);
+    hoverEdge.update((GetAsyncKeyState(VK_F5) & 0x8000) != 0);
     bool visible = false;
+    bool inspecting = false;
     auto refresh = Clock::time_point{};
     auto logRefresh = Clock::time_point{};
     ScreenMetrics::Name loggedScreen{};
@@ -169,6 +173,12 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const 
         const bool focused = GetForegroundWindow() == game && !IsIconic(game);
         const bool pressed = edge.update((GetAsyncKeyState(VK_F3) & 0x8000) != 0);
         if (pressed && focused) visible = !visible;
+        if (nativeReady && hoverEdge.update((GetAsyncKeyState(VK_F5) & 0x8000) != 0) && focused) {
+            inspecting = !inspecting;
+            if (stats.diagnostics && stats.inspectHoveredControl)
+                stats.diagnostics->write("info", inspecting ? "F5 hover inspector enabled" : "F5 hover inspector disabled");
+        }
+        if (nativeReady) renderer.setHoverInspection(inspecting && focused);
         const auto now = Clock::now();
         // Format/write copied diagnostics on this worker, never on the UI or Present thread.
         // Coalesce changes to at most one block / 2 seconds, only while F3 is visible.
@@ -256,7 +266,7 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const 
             append("  frames_per_second: %s\n", fps);
             append("  conduit_version: %s\n", CONDUIT_DISPLAY_VERSION);
             append("  client_version: %.*s", static_cast<int>(stats.clientVersion.size()), stats.clientVersion.data());
-            stats.panel.publish(text, true, stats.settings.scale);
+            stats.panel.publish(text, true, stats.settings.uiScale);
             refresh = now;
         }
         if (!visible || !focused) stats.panel.publish(text, false);

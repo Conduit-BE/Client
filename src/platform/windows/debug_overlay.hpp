@@ -2,6 +2,7 @@
 #include "core/reload_manager.hpp"
 #include "core/screen_metrics.hpp"
 #include "core/debug_panel.hpp"
+#include "core/hover_inspection.hpp"
 #include "core/diagnostics_settings.hpp"
 #include <atomic>
 #include <cstdint>
@@ -18,6 +19,7 @@ struct DebugReloadStats {
     std::filesystem::path titleLogoFile; // DLL-owned cache PNG; empty disables title replacement.
     std::string_view clientVersion = "Unavailable"; // Static selected profile metadata.
     DebugPanelMailbox panel; // Copied presentation state; native rendering reads without waiting.
+    InspectHoveredControl inspectHoveredControl = nullptr;
     ScreenMetrics* screenMetrics = nullptr; // Immutable after start; resident backend owns it.
     Logger* diagnostics = nullptr; // Borrowed from the worker that runs this overlay.
     std::atomic<std::uint64_t> successes{0};

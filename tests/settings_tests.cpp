@@ -23,17 +23,21 @@ int main() {
         bool failed = false;
         try { conduit::standalone::migrateSettings(config); } catch (...) { failed = true; }
         require(failed && read(config) == "{invalid");
-        fs::remove(config); conduit::standalone::migrateSettings(config); require(conduit::standalone::loadDiagnosticsSettings(config).scale == 1.0f);
+        fs::remove(config); conduit::standalone::migrateSettings(config); require(conduit::standalone::loadDiagnosticsSettings(config).uiScale == 1.0f);
         const auto defaults = conduit::standalone::loadDiagnosticsSettings(config);
         require(defaults.factoriesEnabled && defaults.emptyFactories);
         std::ofstream(config) << R"({"diagnostics":{"scale":0.7,"factories":{"enabled":true,"empty":false},"future":9}})";
         conduit::standalone::migrateSettings(config);
         const auto custom = conduit::standalone::loadDiagnosticsSettings(config);
-        require(custom.scale == 0.7f && !custom.emptyFactories);
+        require(custom.uiScale == 0.7f && !custom.emptyFactories);
+        require(read(config).find("\"ui_scale\"") != std::string::npos && read(config).find("\"scale\"") == std::string::npos);
         require(!custom.showFactory(0,0) && custom.showFactory(1,0) && custom.showFactory(0,1));
         auto hidden = custom; hidden.factoriesEnabled = false; require(!hidden.showFactory(1,1));
         require(read(config).find("future") != std::string::npos);
-        for (const auto* invalid : {R"({"diagnostics":{"scale":0}})", R"({"diagnostics":{"scale":true}})", R"({"diagnostics":{"factories":{"empty":1}}})", R"({"diagnostics":null})"}) {
+        std::ofstream(config) << R"({"ui_scale":1.5,"diagnostics":{"scale":0.7}})";
+        conduit::standalone::migrateSettings(config);
+        require(conduit::standalone::loadDiagnosticsSettings(config).uiScale == 1.5f);
+        for (const auto* invalid : {R"({"ui_scale":0})", R"({"ui_scale":true})", R"({"diagnostics":{"scale":0}})", R"({"diagnostics":{"factories":{"empty":1}}})", R"({"diagnostics":null})"}) {
             std::ofstream(config) << invalid; failed = false;
             try { conduit::standalone::migrateSettings(config); } catch (...) { failed = true; }
             require(failed && read(config) == invalid);

@@ -32,7 +32,7 @@ The project is actively developed, with more debugging, profiling, and developme
 - **Element Statistics** — Monitor runtime UI element counts and factory statistics.
 - **Version Compatibility** — A dedicated compatibility framework for verified Minecraft Bedrock versions.
 
-Diagnostics font scale and factory visibility are configurable in [config.json](docs/configuration.md#diagnostics). Restart Minecraft after changing settings.
+Set `ui_scale` in `config.json` to resize the F3 diagnostics and F5 tooltip. Restart Minecraft after changing settings. [Configuration](docs/configuration.md#diagnostics)
 
 ## Installation
 
@@ -57,6 +57,7 @@ Conduit Client provides keyboard shortcuts to simplify your JSON UI development 
 |---|---|---|
 | <code>Ctrl&nbsp;+&nbsp;R</code> | Reload JSON UI | Reloads JSON UI definitions from the active development resource pack. |
 | `F3` | Toggle Diagnostics | Shows or hides the debug overlay with screen information, UI statistics, and performance metrics. |
+| `F5` | Inspect UI Controls | Highlights the topmost visible legacy UI control under the cursor and shows its runtime properties. |
 | <code>Ctrl&nbsp;+&nbsp;K</code> | Eject Client | Safely deactivates Conduit Client; the DLL remains pinned until Minecraft exits. |
 
 ## Diagnostics

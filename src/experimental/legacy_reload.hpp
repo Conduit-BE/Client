@@ -1,5 +1,6 @@
 #pragma once
 #include "core/reload_manager.hpp"
+#include "core/hover_inspection.hpp"
 #include "core/screen_metrics.hpp"
 #include "experimental/legacy_reload_completion.hpp"
 #include <memory>
@@ -14,4 +15,5 @@ std::string legacyReloadState();
 // Resident copied diagnostics; no game pointer escapes the native callback.
 ScreenMetrics& nativeScreenMetrics() noexcept;
 bool isActiveTitleView(void* view, void* scene) noexcept;
+bool inspectHoveredControl(void* view, void* scene, float x, float y, HoveredControl& result) noexcept;
 }

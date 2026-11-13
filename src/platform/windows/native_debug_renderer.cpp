@@ -8,6 +8,7 @@
 #include <cstring>
 #include <cmath>
 #include <cwchar>
+#include <cstdio>
 
 // Exact build evidence, ABI and lifetime rules:
 // docs/reverse-engineering/1.26.60-native-debug-rendering.md
@@ -31,6 +32,10 @@ FlushText originalFlush{};
 std::atomic<bool> enabled{false};
 std::atomic<unsigned> callbacks{0};
 DebugPanelMailbox* mailbox{};
+HWND gameWindow{};
+InspectHoveredControl inspectHovered{};
+float tooltipScale = 1.0f;
+std::atomic<bool> hoverActive{false};
 struct Call { Call() { callbacks.fetch_add(1); } ~Call() { callbacks.fetch_sub(1); } };
 template<class T> T& field(void* object, std::size_t offset) {
     return *reinterpret_cast<T*>(static_cast<std::byte*>(object)+offset);
@@ -49,8 +54,9 @@ thread_local DebugPanelLayout layout;
 thread_local std::uint64_t layoutRevision = 0;
 thread_local float lastWidth = 0, lastHeight = 0;
 thread_local std::uintptr_t lastFontIdentity = 0;
-void render(Frame& frame) {
-    if (!frame.font || !frame.flushed || !mailbox->tryRead(text) || !text.visible) return;
+void render(Frame& frame, void* view) {
+    const bool showPanel = mailbox->tryRead(text) && text.visible;
+    if (!frame.flushed || (!showPanel && !hoverActive.load())) return;
     void* context = frame.context;
     auto* screen = field<void*>(context, profile->layout.screenContext);
     auto* gui = field<void*>(screen, profile->layout.screenGui);
@@ -59,8 +65,8 @@ void render(Frame& frame) {
     // Original ScreenView::render has completed. Never append to unflushed game text.
     const auto begin = field<std::uintptr_t>(context, profile->layout.textBegin);
     if (!begin || field<std::uintptr_t>(context, profile->layout.textEnd) != begin) return;
-    if (layoutRevision != text.revision || width != lastWidth || height != lastHeight ||
-        lastFontIdentity != reinterpret_cast<std::uintptr_t>(frame.font)) {
+    if (showPanel && frame.font && (layoutRevision != text.revision || width != lastWidth || height != lastHeight ||
+        lastFontIdentity != reinterpret_cast<std::uintptr_t>(frame.font))) {
         const auto measure = [&](const char* value, std::size_t size) {
             const Span span{value, size};
             return reinterpret_cast<Width>(base+profile->renderer.textWidthRva)(frame.font, &span, text.scale, false);
@@ -69,9 +75,21 @@ void render(Frame& frame) {
         layoutRevision = text.revision; lastWidth = width; lastHeight = height;
         lastFontIdentity = reinterpret_cast<std::uintptr_t>(frame.font);
     }
-    if (!layout.count) return;
     const auto capacity = field<std::uintptr_t>(context, profile->layout.textCapacity);
-    if (capacity < begin || capacity-begin < layout.count*profile->layout.textRecordSize) return;
+    if (capacity < begin) return;
+    const auto available = (capacity - begin) / profile->layout.textRecordSize;
+    HoveredControl hovered{};
+    bool showHover = false;
+    POINT cursor{};
+    RECT client{};
+    if (hoverActive.load() && inspectHovered && GetForegroundWindow() == gameWindow &&
+        GetCursorPos(&cursor) && ScreenToClient(gameWindow, &cursor) && GetClientRect(gameWindow, &client) &&
+        client.right > 0 && client.bottom > 0 && PtInRect(&client, cursor)) {
+        showHover = inspectHovered(view, field<void*>(context, profile->logo.contextScene),
+            cursor.x * width / client.right, cursor.y * height / client.bottom, hovered);
+    }
+    const bool drawPanel = showPanel && frame.font && layout.count && layout.count <= available;
+    if (!drawPanel && !showHover) return;
     auto* gpu = field<void*>(screen, profile->layout.screenGpu);
     auto* color = field<void*>(screen, profile->layout.screenColor);
     struct Restore {
@@ -86,21 +104,51 @@ void render(Frame& frame) {
     } restore(color, gpu);
     const Rect viewport{0, width, 0, height};
     reinterpret_cast<SetClip>(base+profile->renderer.setClipRva)(context, &viewport);
-    const Rect panel{layout.left, layout.left+layout.width, layout.top, layout.top+layout.height};
     const Color background{0, 0, 0}, foreground{1, 1, 1};
-    reinterpret_cast<Fill>(base+profile->renderer.fillRva)(context, &panel, &background, 0.5f);
-    const Measure measure{layout.fontScale};
-    const int caret = -1;
-    for (unsigned index = 0; index < layout.count; ++index) {
-        const auto& row = layout.rows[index];
-        const Span span{row.data(), std::strlen(row.data())};
-        const float y = panel.top+layout.padding+index*layout.lineHeight;
-        const Rect bounds{panel.left+layout.padding, panel.right-layout.padding, y, y+10*layout.fontScale};
-        reinterpret_cast<DrawText>(base+profile->renderer.drawTextRva)(context, frame.font, &bounds, &span, &foreground, 1, 0, &measure, &caret);
+    const auto fill = reinterpret_cast<Fill>(base+profile->renderer.fillRva);
+    char details[512]{};
+    DebugPanelLayout tooltip{};
+    if (showHover) {
+        const auto left = std::min(hovered.x, hovered.x + hovered.width);
+        const auto top = std::min(hovered.y, hovered.y + hovered.height);
+        const Rect bounds{std::clamp(left, 0.f, width), std::clamp(left + std::abs(hovered.width), 0.f, width),
+                          std::clamp(top, 0.f, height), std::clamp(top + std::abs(hovered.height), 0.f, height)};
+        const Color blue{0.40f, 0.76f, 1.f};
+        fill(context, &bounds, &blue, 0.30f);
+        if (frame.font) {
+            std::snprintf(details, sizeof(details),
+                "Name: %s\nType: %s\nLayer: %lld\nSize: %.1f x %.1f\nPosition: %.1f, %.1f\nVisible: %s",
+                hovered.name.data(), hovered.type, static_cast<long long>(hovered.layer),
+                hovered.width, hovered.height, hovered.x, hovered.y, hovered.visible ? "true" : "false");
+            tooltip = layoutDebugPanel(details, width, height, [&](const char* value, std::size_t size) {
+                const Span span{value, size};
+                return reinterpret_cast<Width>(base+profile->renderer.textWidthRva)(frame.font, &span, tooltipScale, false);
+            }, tooltipScale);
+            tooltip.left = std::clamp(bounds.left, 0.f, std::max(0.f, width - tooltip.width));
+            tooltip.top = std::clamp(bounds.top >= tooltip.height ? bounds.top - tooltip.height : bounds.bottom,
+                                     0.f, std::max(0.f, height - tooltip.height));
+        }
     }
+    const auto draw = [&](const DebugPanelLayout& box, float opacity) {
+        const Rect panel{box.left, box.left+box.width, box.top, box.top+box.height};
+        fill(context, &panel, &background, opacity);
+        const Measure measure{box.fontScale};
+        const int caret = -1;
+        for (unsigned index = 0; index < box.count; ++index) {
+            const auto& row = box.rows[index];
+            const Span span{row.data(), std::strlen(row.data())};
+            const float y = panel.top+box.padding+index*box.lineHeight;
+            const Rect bounds{panel.left+box.padding, panel.right-box.padding, y, y+10*box.fontScale};
+            reinterpret_cast<DrawText>(base+profile->renderer.drawTextRva)(
+                context, frame.font, &bounds, &span, &foreground, 1, 0, &measure, &caret);
+        }
+    };
+    const bool drawTooltip = tooltip.count && tooltip.count <= available;
+    if (drawPanel && (!drawTooltip || layout.count + tooltip.count <= available)) draw(layout, 0.5f);
+    if (drawTooltip) draw(tooltip, 0.75f);
     // Borrowed strings remain alive until this synchronous flush returns. Bit 32 prevents
     // advancing the font animation timer twice; low 32 bits preserve the natural text depth.
-    originalFlush(context, 0, frame.flushFlags | (std::uint64_t{1}<<32));
+    if (drawPanel || drawTooltip) originalFlush(context, 0, frame.flushFlags | (std::uint64_t{1}<<32));
 }
 void onFlush(void* context, float delta, std::uint64_t flags) {
     Call call;
@@ -124,16 +172,17 @@ void onView(void* view, void* context) {
     if (!enabled.load() || !context || field<std::uintptr_t>(context, 0) != base+profile->renderer.contextTableRva) {
         originalView(view, context); return;
     }
-    if (!mailbox->tryRead(text) || !text.visible) { originalView(view, context); return; }
+    if (!hoverActive.load() && (!mailbox->tryRead(text) || !text.visible)) { originalView(view, context); return; }
     Frame frame{currentFrame, context};
     struct Scope { Frame* previous; ~Scope() { currentFrame = previous; } } scope{currentFrame};
     currentFrame = &frame;
     originalView(view, context);
-    if (enabled.load()) render(frame);
+    if (enabled.load()) render(frame, view);
     // frame's context and borrowed font cease to be accessible here.
 }
 }
-bool NativeDebugRenderer::install(DebugPanelMailbox& panel, const std::filesystem::path& logoFile) noexcept {
+bool NativeDebugRenderer::install(DebugPanelMailbox& panel, const std::filesystem::path& logoFile,
+                                  HWND window, InspectHoveredControl inspect, float uiScale) noexcept {
     wchar_t path[32768]{};
     if (!GetModuleFileNameW(nullptr, path, 32768)) return false;
     const auto* name = std::wcsrchr(path, L'\\');
@@ -146,6 +195,9 @@ bool NativeDebugRenderer::install(DebugPanelMailbox& panel, const std::filesyste
     if (MH_CreateHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva), reinterpret_cast<void*>(&onView), reinterpret_cast<void**>(&originalView)) != MH_OK) return false;
     if (MH_CreateHook(reinterpret_cast<void*>(base+profile->renderer.flushTextRva), reinterpret_cast<void*>(&onFlush), reinterpret_cast<void**>(&originalFlush)) != MH_OK) return false;
     mailbox = &panel;
+    gameWindow = window;
+    inspectHovered = inspect;
+    tooltipScale = uiScale;
     if (MH_EnableHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva)) != MH_OK) return false;
     if (MH_EnableHook(reinterpret_cast<void*>(base+profile->renderer.flushTextRva)) != MH_OK) {
         MH_DisableHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva)); return false;
@@ -154,9 +206,13 @@ bool NativeDebugRenderer::install(DebugPanelMailbox& panel, const std::filesyste
     if (!logoFile.empty()) installTitleLogo(logoFile);
     return true;
 }
+void NativeDebugRenderer::setHoverInspection(bool active) noexcept {
+    hoverActive.store(active && inspectHovered != nullptr);
+}
 NativeDebugRenderer::~NativeDebugRenderer() {
     if (!installed_) return;
     enabled.store(false);
+    hoverActive.store(false);
     stopTitleLogo();
     MH_DisableHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva));
     MH_DisableHook(reinterpret_cast<void*>(base+profile->renderer.flushTextRva));

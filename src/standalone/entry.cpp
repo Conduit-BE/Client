@@ -59,6 +59,7 @@ DWORD WINAPI initialize(LPVOID) noexcept {
         } catch (const std::exception& error) { log->write("warning",error.what()); }
         debugStats.clientVersion = conduit::minecraft::runningCompatibility()->build;
         debugStats.screenMetrics = &conduit::experimental::nativeScreenMetrics();
+        debugStats.inspectHoveredControl = &conduit::experimental::inspectHoveredControl;
         debugStats.diagnostics = log.get();
         backend = conduit::windows::trackDebugReloads(std::move(backend), debugStats);
         const auto clientLog = utf8(logs / L"client.log");
