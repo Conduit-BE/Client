@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ConduitClient VERSION 0.5.0 LANGUAGES C CXX)
+project(ConduitClient VERSION 0.6.0 LANGUAGES C CXX)
 
 include(CTest)
 find_package(Threads REQUIRED)

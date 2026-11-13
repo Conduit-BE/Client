@@ -1,4 +1,4 @@
-# Standalone configuration — v0.4.3-beta
+# Standalone configuration — v0.6.0-beta
 
 The data root is `%LOCALAPPDATA%/ConduitClient/` in Minecraft's Windows/Proton profile. `config.json` is created automatically with the diagnostics defaults below. There are no user-facing reload settings. Initialization and targeted JSON UI reload are automatic.
 

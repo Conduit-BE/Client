@@ -106,7 +106,7 @@ void render(Frame& frame, void* view) {
     reinterpret_cast<SetClip>(base+profile->renderer.setClipRva)(context, &viewport);
     const Color background{0, 0, 0}, foreground{1, 1, 1};
     const auto fill = reinterpret_cast<Fill>(base+profile->renderer.fillRva);
-    char details[512]{};
+    char details[1536]{};
     DebugPanelLayout tooltip{};
     if (showHover) {
         const auto left = std::min(hovered.x, hovered.x + hovered.width);
@@ -116,10 +116,18 @@ void render(Frame& frame, void* view) {
         const Color blue{0.40f, 0.76f, 1.f};
         fill(context, &bounds, &blue, 0.30f);
         if (frame.font) {
-            std::snprintf(details, sizeof(details),
+            const int propertyBytes = std::snprintf(details, sizeof(details),
                 "Name: %s\nType: %s\nLayer: %lld\nSize: %.1f x %.1f\nPosition: %.1f, %.1f\nVisible: %s",
                 hovered.name.data(), hovered.type, static_cast<long long>(hovered.layer),
                 hovered.width, hovered.height, hovered.x, hovered.y, hovered.visible ? "true" : "false");
+            auto used = static_cast<std::size_t>(std::clamp(propertyBytes, 0, static_cast<int>(sizeof(details) - 1)));
+            for (unsigned index = 0; index < hovered.parentCount && used < sizeof(details) - 1; ++index) {
+                const int bytes = std::snprintf(details + used, sizeof(details) - used, "\n%s %s",
+                    index == 0 ? "Parent:" : "  <-", hovered.parents[index].data());
+                if (bytes > 0) used += std::min(static_cast<std::size_t>(bytes), sizeof(details) - used - 1);
+            }
+            if (hovered.moreParents)
+                std::snprintf(details + used, sizeof(details) - used, "\n  ...");
             tooltip = layoutDebugPanel(details, width, height, [&](const char* value, std::size_t size) {
                 const Span span{value, size};
                 return reinterpret_cast<Width>(base+profile->renderer.textWidthRva)(frame.font, &span, tooltipScale, false);

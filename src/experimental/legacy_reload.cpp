@@ -707,10 +707,13 @@ bool inspectHoveredControl(void* view, void* scene, float x, float y, HoveredCon
     if (readPointerAt(tree) != state.base + profile->reload.visualTreeTableRva) return false;
     struct Point { float x, y; };
     std::uintptr_t selected = 0;
+    std::array<std::uintptr_t, 128> path{};
+    std::array<std::uintptr_t, 128> selectedPath{};
+    unsigned selectedDepth = 0;
     unsigned remaining = 8192;
     const auto deadline = ScreenMetrics::Clock::now() + controlSampleBudget;
     const auto visit = [&](auto&& self, std::uintptr_t node, std::int64_t parentLayer, unsigned depth) -> bool {
-        if (!node || !remaining || depth >= 128 ||
+        if (!node || !remaining || depth >= path.size() ||
             (remaining % 64 == 0 && ScreenMetrics::Clock::now() >= deadline)) return false;
         --remaining;
         unsigned char flags{};
@@ -729,6 +732,8 @@ bool inspectHoveredControl(void* view, void* scene, float x, float y, HoveredCon
                 x >= std::min(position.x, right) && x < std::max(position.x, right) &&
                 y >= std::min(position.y, bottom) && y < std::max(position.y, bottom)) {
                 selected = node;
+                std::copy_n(path.begin(), depth, selectedPath.begin());
+                selectedDepth = depth;
                 result.x = position.x; result.y = position.y;
                 result.width = size.x; result.height = size.y;
                 result.layer = effectiveLayer;
@@ -741,6 +746,7 @@ bool inspectHoveredControl(void* view, void* scene, float x, float y, HoveredCon
             (children.end - children.begin) % sizeof(SharedControl)) return false;
         const auto count = (children.end - children.begin) / sizeof(SharedControl);
         if (count > remaining) return false;
+        path[depth] = node;
         for (std::size_t index = 0; index < count; ++index) {
             if (!self(self, readPointerAt(children.begin, index * sizeof(SharedControl)), effectiveLayer, depth + 1))
                 return false;
@@ -752,6 +758,13 @@ bool inspectHoveredControl(void* view, void* scene, float x, float y, HoveredCon
     bool truncated = false;
     if (!copyControlName(selected, result.name, truncated) || !result.name[0])
         std::snprintf(result.name.data(), result.name.size(), "(unnamed)");
+    result.parentCount = std::min(selectedDepth, static_cast<unsigned>(result.parents.size()));
+    result.moreParents = selectedDepth > result.parentCount;
+    for (unsigned index = 0; index < result.parentCount; ++index) {
+        auto& name = result.parents[index];
+        if (!copyControlName(selectedPath[selectedDepth - index - 1], name, truncated) || !name[0])
+            std::snprintf(name.data(), name.size(), "(unnamed)");
+    }
     NativeVector components{};
     if (readAt(selected, profile->layout.controlComponents + sizeof(std::uint64_t), &components, sizeof(components)) &&
         components.end >= components.begin && components.capacity >= components.end &&

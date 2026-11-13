@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.0-beta — 2026-11-13
+
+- Add an F5 inspector that highlights the topmost visible legacy UI control and shows its properties and parent chain.
+- Add a shared `ui_scale` setting for F3 diagnostics and the F5 tooltip. Existing `diagnostics.scale` values migrate on startup.
+
 ## v0.5.0-beta
 
 - Add Windows GDK x64 support for Bedrock 1.26.62.1 and 1.26.63.1.

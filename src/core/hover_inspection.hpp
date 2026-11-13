@@ -4,7 +4,11 @@
 
 namespace conduit {
 struct HoveredControl {
-    std::array<char, 160> name{};
+    using Name = std::array<char, 160>;
+    Name name{};
+    std::array<Name, 6> parents{}; // Immediate parent first.
+    unsigned parentCount{};
+    bool moreParents{};
     const char* type = "control"; // Static label for a verified runtime component.
     float x{}, y{}, width{}, height{};
     std::int64_t layer{};

@@ -28,6 +28,7 @@ The project is actively developed, with more debugging, profiling, and developme
 
 - **JSON UI Hot Reload** — Reload JSON UI definitions without restarting Minecraft or rejoining a world.
 - **Developer Diagnostics** — Inspect runtime information through an in-game debug overlay.
+- **UI Hover Inspector** — Highlight the topmost visible legacy UI control and inspect its runtime properties and ancestors.
 - **Screen Detection** — Identify the currently active Minecraft UI screen.
 - **Element Statistics** — Monitor runtime UI element counts and factory statistics.
 - **Version Compatibility** — A dedicated compatibility framework for verified Minecraft Bedrock versions.
@@ -36,7 +37,7 @@ Set `ui_scale` in `config.json` to resize the F3 diagnostics and F5 tooltip. Res
 
 ## Installation
 
-1. Download the latest compatible `ConduitClient.dll` from the [v0.5.0-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.5.0-beta).
+1. Download the latest compatible `ConduitClient.dll` from the [v0.6.0-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.6.0-beta).
 2. Verify the downloaded DLL against the provided `SHA256SUMS` file.
 3. Configure your Windows x64 DLL injector or BedrockOnLinux's built-in injector to load `ConduitClient.dll`. On LeviLauncher 1.1.0, import it as a `preload-native` mod in a supported GDK instance.
 4. Launch a supported Minecraft: Bedrock Edition version.
@@ -57,7 +58,7 @@ Conduit Client provides keyboard shortcuts to simplify your JSON UI development 
 |---|---|---|
 | <code>Ctrl&nbsp;+&nbsp;R</code> | Reload JSON UI | Reloads JSON UI definitions from the active development resource pack. |
 | `F3` | Toggle Diagnostics | Shows or hides the debug overlay with screen information, UI statistics, and performance metrics. |
-| `F5` | Inspect UI Controls | Highlights the topmost visible legacy UI control under the cursor and shows its runtime properties. |
+| `F5` | Toggle UI Inspector | Toggles the blue highlight and tooltip for the topmost visible legacy UI control under the cursor. |
 | <code>Ctrl&nbsp;+&nbsp;K</code> | Eject Client | Safely deactivates Conduit Client; the DLL remains pinned until Minecraft exits. |
 
 ## Diagnostics
@@ -72,6 +73,8 @@ Available diagnostics include:
 - Frames per second (FPS).
 
 Press `F3` to toggle the diagnostics overlay.
+
+Press `F5` to toggle the hover inspector. The tooltip shows the control name, runtime type, layer, size, position, visibility, and up to six ancestors.
 
 ## Version Compatibility
 
@@ -128,7 +131,7 @@ Conduit Client is actively developed with a focus on stability, performance, and
 
 Useful resources:
 
-- [v0.5.0-beta release notes](docs/releases/v0.5.0-beta.md)
+- [v0.6.0-beta release notes](docs/releases/v0.6.0-beta.md)
 - [Title logo implementation and evidence](docs/title-logo-fix.md)
 - [Standalone installation and build](docs/standalone-initialization.md)
 - [Foundation API and tests](docs/build.md)
