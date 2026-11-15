@@ -37,7 +37,7 @@ Set `ui_scale` in `config.json` to resize the F3 diagnostics and F5 tooltip. Res
 
 ## Installation
 
-1. Download the latest compatible `ConduitClient.dll` from the [v0.6.0-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.6.0-beta).
+1. Download the latest compatible `ConduitClient.dll` from the [v0.6.1 release](https://github.com/Conduit-BE/client/releases/tag/v0.6.1).
 2. Verify the downloaded DLL against the provided `SHA256SUMS` file.
 3. Configure your Windows x64 DLL injector or BedrockOnLinux's built-in injector to load `ConduitClient.dll`. On LeviLauncher 1.1.0, import it as a `preload-native` mod in a supported GDK instance.
 4. Launch a supported Minecraft: Bedrock Edition version.
@@ -131,6 +131,7 @@ Conduit Client is actively developed with a focus on stability, performance, and
 
 Useful resources:
 
+- [v0.6.1 release notes](docs/releases/v0.6.1.md)
 - [v0.6.0-beta release notes](docs/releases/v0.6.0-beta.md)
 - [Title logo implementation and evidence](docs/title-logo-fix.md)
 - [Standalone installation and build](docs/standalone-initialization.md)

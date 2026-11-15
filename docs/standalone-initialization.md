@@ -1,23 +1,23 @@
-# Standalone installation — v0.6.0-beta
+# Standalone installation — v0.6.1
 
-The [v0.6.0-beta release](https://github.com/Conduit-BE/client/releases/tag/v0.6.0-beta) supports Bedrock GDK x64 **1.26.60.5**, **1.26.62.1**, and **1.26.63.1**. LeviLauncher lists 1.26.62.1 and 1.26.63.1 as **1.26.62.01** and **1.26.63.01**. Conduit selects profiles by PE architecture and file version, then checks native code signatures before installing hooks.
+The [v0.6.1 release](https://github.com/Conduit-BE/client/releases/tag/v0.6.1) supports Bedrock GDK x64 **1.26.60.5**, **1.26.62.1**, and **1.26.63.1**. LeviLauncher lists 1.26.62.1 and 1.26.63.1 as **1.26.62.01** and **1.26.63.01**. Conduit selects profiles by PE architecture and file version, then checks native code signatures before installing hooks.
 
 ## Build
 
 ```sh
-cmake -S . -B .local/build/v0.6.0-beta -G Ninja \
+cmake -S . -B .local/build/v0.6.1 -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-x86_64.cmake \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DCMAKE_CROSSCOMPILING_EMULATOR=/usr/bin/wine \
   -DCONDUIT_STANDALONE_LEGACY_RELOAD=ON \
   -DCONDUIT_EXPERIMENTAL_LEGACY_RELOAD=ON
-cmake --build .local/build/v0.6.0-beta
+cmake --build .local/build/v0.6.1
 WINEPREFIX="$PWD/.local/wine-conduit" WINEDEBUG=-all \
   WINEDLLOVERRIDES=mscoree,mshtml= \
-  ctest --test-dir .local/build/v0.6.0-beta --output-on-failure
+  ctest --test-dir .local/build/v0.6.1 --output-on-failure
 ```
 
-Inject `.local/build/v0.6.0-beta/standalone/ConduitClient.dll`. The `bin/ConduitClient.dll` output is the separate foundation target. MinGW runtimes are statically linked. No Frida controller or external PNG is required for initialization.
+Inject `.local/build/v0.6.1/standalone/ConduitClient.dll`. The `bin/ConduitClient.dll` output is the separate foundation target. MinGW runtimes are statically linked. No Frida controller or external PNG is required for initialization.
 
 ## Install and use
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.1 — 2026-11-15
+
+- Show resolved JSON UI control types in F5 hover inspection, including `stack_panel`.
+
 ## v0.6.0-beta — 2026-11-13
 
 - Add an F5 inspector that highlights the topmost visible legacy UI control and shows its properties and parent chain.

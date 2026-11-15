@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ConduitClient VERSION 0.6.0 LANGUAGES C CXX)
+project(ConduitClient VERSION 0.6.1 LANGUAGES C CXX)
 
 include(CTest)
 find_package(Threads REQUIRED)
@@ -17,7 +17,7 @@ FetchContent_Declare(nlohmann_json
 FetchContent_MakeAvailable(nlohmann_json)
 
 function(conduit_target target)
-    target_compile_definitions(${target} PRIVATE CONDUIT_DISPLAY_VERSION="v${PROJECT_VERSION}-beta")
+    target_compile_definitions(${target} PRIVATE CONDUIT_DISPLAY_VERSION="v${PROJECT_VERSION}")
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8)
     else()

@@ -21,8 +21,11 @@
 #include <fstream>
 #include <filesystem>
 #include <mutex>
+#include <new>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 #include <limits>
 #include <bit>
@@ -136,6 +139,148 @@ bool readAt(std::uintptr_t object, std::size_t offset, void* output, std::size_t
 std::uintptr_t readPointerAt(std::uintptr_t object, std::size_t offset = 0) noexcept {
     std::uintptr_t result{};
     return readAt(object, offset, &result, sizeof(result)) ? result : 0;
+}
+// Native factory and resolved-definition ABI. See 1.26.60-hover-inspector.md.
+using ControlFactory = SharedControl* (*)(void*, SharedControl*, void*, void*, void*, void*, int, bool);
+using ControlDestructor = void (*)(void*);
+struct NativeStringView { const char* data; std::size_t size; };
+using ResolvedProperty = std::uintptr_t (*)(void*, const NativeStringView*, unsigned);
+ControlFactory originalControlFactory{};
+ControlDestructor originalControlDestructor{};
+ResolvedProperty resolvedProperty{};
+std::atomic<bool> captureControlTypes{};
+std::mutex controlTypesMutex;
+struct ControlTypeEntry {
+    std::uintptr_t owner;
+    HoveredControl::Type type;
+};
+std::unordered_map<std::uintptr_t, ControlTypeEntry> controlTypes;
+
+HoveredControl::Type readResolvedControlType(void* definition) {
+    HoveredControl::Type type{};
+    if (!definition) return type;
+    constexpr NativeStringView typeKey{"type", 4};
+    const auto value = resolvedProperty(definition, &typeKey, 0);
+    constexpr unsigned char stringTag = 4;
+    unsigned char tag{};
+    if (!readAt(value, sizeof(std::uintptr_t), &tag, sizeof(tag)) || tag != stringTag) return type;
+
+    const auto string = readPointerAt(readPointerAt(value));
+    // Read the bounded string one byte at a time to avoid reading past its allocation.
+    for (std::size_t index = 0; index < type.size(); ++index) {
+        if (!readAt(string, index, &type[index], 1)) return {};
+        if (!type[index]) return type;
+        const auto byte = static_cast<unsigned char>(type[index]);
+        if (byte < 0x20 || byte >= 0x7f) return {};
+    }
+    return {};
+}
+
+SharedControl* observeControlCreation(void* factory, SharedControl* output, void* context, void* definition,
+                                      void* parent, void* options, int mode, bool flag) {
+    auto* result = originalControlFactory(factory, output, context, definition, parent, options, mode, flag);
+    if (result && result->object && result->owner && captureControlTypes.load(std::memory_order_relaxed)) {
+        const auto type = readResolvedControlType(definition);
+        if (!type[0]) return result;
+        try {
+            std::lock_guard lock(controlTypesMutex);
+            constexpr std::size_t maximumTrackedControls = 65536;
+            if (captureControlTypes.load(std::memory_order_relaxed) && controlTypes.size() < maximumTrackedControls)
+                controlTypes.insert_or_assign(result->object, ControlTypeEntry{result->owner, type});
+        } catch (const std::bad_alloc&) {
+            // A diagnostics allocation must never fail control creation.
+        }
+    }
+    return result;
+}
+
+void observeControlDestruction(void* control) {
+    if (captureControlTypes.load(std::memory_order_relaxed)) {
+        std::lock_guard lock(controlTypesMutex);
+        controlTypes.erase(reinterpret_cast<std::uintptr_t>(control));
+    }
+    originalControlDestructor(control);
+}
+
+void copyResolvedControlType(std::uintptr_t control, HoveredControl::Type& type) {
+    std::unique_lock lock(controlTypesMutex, std::try_to_lock);
+    if (!lock) return;
+    const auto entry = controlTypes.find(control);
+    // UIControl begins with its weak self identity. Check the owner as well as the address.
+    if (entry != controlTypes.end() && readPointerAt(control, sizeof(std::uintptr_t)) == entry->second.owner)
+        type = entry->second.type;
+}
+
+std::uintptr_t relativeTarget(std::uintptr_t nextInstruction) noexcept {
+    std::int32_t displacement{};
+    if (!readAt(nextInstruction - sizeof(displacement), 0, &displacement, sizeof(displacement))) return 0;
+    return nextInstruction + displacement;
+}
+
+std::uintptr_t findHoverNativeFunction(std::string_view code, std::uintptr_t start,
+                                       std::string_view signature) noexcept {
+    const auto offset = code.find(signature);
+    if (offset == std::string_view::npos || code.find(signature, offset + 1) != std::string_view::npos)
+        return 0;
+    const auto address = start + offset;
+    DWORD64 imageBase{};
+    const auto* entry = RtlLookupFunctionEntry(address, &imageBase, nullptr);
+    return entry && imageBase == state.base && imageBase + entry->BeginAddress == address ? address : 0;
+}
+
+bool installHoverTypeHooks() {
+    using namespace std::string_view_literals;
+    // Search the legacy UI code around the supported build's verified sprite renderer.
+    constexpr std::size_t searchSize = 0x50000;
+    const auto start = state.base + profile->logo.spriteDrawRva;
+    std::string code(searchSize, '\0');
+    if (!readAt(start, 0, code.data(), code.size())) return false;
+    const auto factory = findHoverNativeFunction(code, start,
+        "\x55\x41\x57\x41\x56\x41\x55\x41\x54\x56\x57\x53\x48\x81\xec\x48\x0a\x00\x00"
+        "\x48\x8d\xac\x24\x80\x00\x00\x00\x66\x0f\x7f\xb5\xb0\x09\x00\x00"sv);
+    const auto destructor = findHoverNativeFunction(code, start,
+        "\x41\x57\x41\x56\x56\x57\x53\x48\x83\xec\x30\x48\x89\xce"
+        "\x48\x8b\x89\x40\x01\x00\x00\x48\x85\xc9\x74\x13\xf0\xff\x49\x0c"sv);
+    if (!factory || !destructor) return false;
+
+    // Confirm the type dispatch and follow its two direct calls to the property accessor.
+    const auto matches = [](std::uintptr_t address, std::string_view bytes) {
+        return address > state.base && minecraft::matchesMainExecutableCode(address - state.base,
+            {reinterpret_cast<const unsigned char*>(bytes.data()), bytes.size()});
+    };
+    constexpr std::size_t factoryTypeCall = 0x723;
+    const auto call = factory + factoryTypeCall;
+    if (!matches(call, "\xe8"sv) || !matches(call + 5, "\x90\x83\xf8\x17\x0f\x87"sv)) return false;
+    const auto getter = relativeTarget(call + 5);
+    if (!matches(getter, "\x55\x56\x48\x81\xec\x88\x00\x00\x00\x48\x8d\xac\x24\x80\x00\x00\x00"sv) ||
+        !matches(getter + 0x19, "\x48\x8d\x05"sv) ||
+        !matches(getter + 0x2c, "\x48\x8d\x55\xb0\x45\x31\xc0\xe8"sv)) return false;
+    const auto key = relativeTarget(getter + 0x20);
+    std::array<char, 5> keyBytes{};
+    if (!readAt(key, 0, keyBytes.data(), keyBytes.size()) || std::string_view(keyBytes.data(), 5) != "type\0"sv)
+        return false;
+    const auto accessor = relativeTarget(getter + 0x38);
+    if (!matches(accessor, "\x41\x56\x56\x57\x53\x48\x83\xec\x38\x44\x89\xc3\x48\x89\xce"sv))
+        return false;
+    resolvedProperty = reinterpret_cast<ResolvedProperty>(accessor);
+
+    auto* destroy = reinterpret_cast<void*>(destructor);
+    auto* create = reinterpret_cast<void*>(factory);
+    if (MH_CreateHook(destroy, reinterpret_cast<void*>(&observeControlDestruction),
+                      reinterpret_cast<void**>(&originalControlDestructor)) != MH_OK) return false;
+    if (MH_CreateHook(create, reinterpret_cast<void*>(&observeControlCreation),
+                      reinterpret_cast<void**>(&originalControlFactory)) != MH_OK) {
+        MH_RemoveHook(destroy);
+        return false;
+    }
+    if (MH_QueueEnableHook(destroy) != MH_OK || MH_QueueEnableHook(create) != MH_OK ||
+        MH_ApplyQueued() != MH_OK) {
+        MH_RemoveHook(create);
+        MH_RemoveHook(destroy);
+        return false;
+    }
+    captureControlTypes.store(true, std::memory_order_relaxed);
+    return true;
 }
 struct CollectedControls { ControlCount elements; std::uint32_t micros = 0; FactoryStatistics factories{}; std::uint32_t totalMicros = 0; ControlCount bindings{}; };
 template<std::size_t Size>
@@ -628,6 +773,13 @@ void install(const std::filesystem::path& diagnosticLog, bool automaticFrame) {
     state.enabled = true;
     diagnostic("backend_enabled waiting_for_live_owner_affinity");
     lock.unlock();
+    if (automaticFrame && profile->features.nativeRenderer) {
+        try {
+            diagnostic(installHoverTypeHooks() ? "native_hover_types_installed" : "native_hover_types_unavailable");
+        } catch (const std::bad_alloc&) {
+            diagnostic("native_hover_types_unavailable");
+        }
+    }
     const bool screenCompatible = minecraft::matchesMainExecutableCode(profile->reload.screenNameRva, profile->signatures.screenPrefix);
     if (profile->features.screenMetrics && automaticFrame && screenCompatible &&
         MH_CreateHook(reinterpret_cast<void*>(state.base + profile->reload.screenNameRva), reinterpret_cast<void*>(&observeScreenName),
@@ -765,20 +917,8 @@ bool inspectHoveredControl(void* view, void* scene, float x, float y, HoveredCon
         if (!copyControlName(selectedPath[selectedDepth - index - 1], name, truncated) || !name[0])
             std::snprintf(name.data(), name.size(), "(unnamed)");
     }
-    NativeVector components{};
-    if (readAt(selected, profile->layout.controlComponents + sizeof(std::uint64_t), &components, sizeof(components)) &&
-        components.end >= components.begin && components.capacity >= components.end &&
-        (components.end - components.begin) % sizeof(std::uintptr_t) == 0 &&
-        components.end - components.begin <= 64 * sizeof(std::uintptr_t)) {
-        for (auto entry = components.begin; entry < components.end; entry += sizeof(std::uintptr_t)) {
-            const auto table = readPointerAt(readPointerAt(entry));
-            if (table == state.base + profile->logo.spriteTableRva) {
-                result.type = "image";
-                break;
-            }
-            if (table == state.base + profile->reload.factoryComponentTableRva) result.type = "factory";
-        }
-    }
+    result.type = HoveredControl{}.type;
+    copyResolvedControlType(selected, result.type);
     return true;
 }
 ScreenMetrics& nativeScreenMetrics() noexcept { return state.screenMetrics; }
@@ -801,6 +941,11 @@ bool retireLegacyReloadHooks() noexcept {
     return !state.installed || MH_DisableHook(MH_ALL_HOOKS) == MH_OK;
 }
 void disableLegacyReload() noexcept {
+    {
+        std::lock_guard lock(controlTypesMutex);
+        captureControlTypes.store(false, std::memory_order_relaxed);
+        controlTypes.clear();
+    }
     std::lock_guard lock(state.mutex);
     state.enabled = false;
     state.screenThread.store(0, std::memory_order_release);

@@ -118,7 +118,7 @@ void render(Frame& frame, void* view) {
         if (frame.font) {
             const int propertyBytes = std::snprintf(details, sizeof(details),
                 "Name: %s\nType: %s\nLayer: %lld\nSize: %.1f x %.1f\nPosition: %.1f, %.1f\nVisible: %s",
-                hovered.name.data(), hovered.type, static_cast<long long>(hovered.layer),
+                hovered.name.data(), hovered.type.data(), static_cast<long long>(hovered.layer),
                 hovered.width, hovered.height, hovered.x, hovered.y, hovered.visible ? "true" : "false");
             auto used = static_cast<std::size_t>(std::clamp(propertyBytes, 0, static_cast<int>(sizeof(details) - 1)));
             for (unsigned index = 0; index < hovered.parentCount && used < sizeof(details) - 1; ++index) {
