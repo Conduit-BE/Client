@@ -38,10 +38,9 @@ Edit `config.json` to change hotkeys or adjust the diagnostics and tooltip with 
 ## Installation
 
 1. Download the latest compatible `ConduitClient.dll` from the [latest release](https://github.com/Conduit-BE/Client/releases/latest).
-2. Verify the downloaded DLL against the provided `SHA256SUMS` file.
-3. Configure your DLL injector to load `ConduitClient.dll`. Use the dedicated [Conduit Launcher](https://github.com/Conduit-BE/Launcher) or BedrockOnLinux’s built-in injector. On LeviLauncher 1.1.0, import the DLL as a `preload-native` mod.
-4. Launch a supported Minecraft: Bedrock Edition version.
-5. Open a world or join a server with your resource pack enabled.
+2. Configure your DLL injector to load `ConduitClient.dll`. Use the dedicated [Conduit Launcher](https://github.com/Conduit-BE/Launcher) or your own solution.
+3. Launch a supported Minecraft: Bedrock Edition version.
+4. Open a world or join a server with your resource pack enabled.
 
 [Full installation, building, and troubleshooting documentation](docs/standalone-initialization.md).
 
@@ -79,8 +78,6 @@ Each supported Minecraft version requires a verified compatibility profile conta
 
 **Supported Bedrock GDK x64 builds:** `1.26.60.5`, `1.26.62.1`, and `1.26.63.1`.
 
-Unsupported versions are rejected safely rather than attempting to execute unverified native functionality.
-
 ## Configuration and Logs
 
 Conduit Client stores its configuration and diagnostic logs under:
@@ -112,15 +109,11 @@ Conduit Client is actively developed with a focus on stability, performance, and
 
 Useful resources:
 
-- [v1.0.0-stable release notes](docs/releases/v1.0.0-stable.md)
-- [v0.6.1 release notes](docs/releases/v0.6.1.md)
 - [Standalone installation and build](docs/standalone-initialization.md)
-- [Foundation API and tests](docs/build.md)
 - [Native JSON UI reverse-engineering research](docs/reverse-engineering/1.26.60-json-ui-only-prototype.md)
 - [Development handoff](docs/development-handoff.md)
 - [Reverse-engineering tools](tools/reverse-engineering/README.md)
 - [Project guidance](AGENTS.md)
-- [Foundation C API](include/conduit/api.h)
 - [Third-party notices](THIRD_PARTY_NOTICES.txt)
 
 ## Disclaimer
