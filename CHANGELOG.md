@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.0-stable — 2026-11-16
+
+- Configure and live-reload diagnostics, tooltip, reload, and eject keybinds.
+- Share background opacity and scale between diagnostics and the hover inspector while keeping text opaque.
+- Refresh the main-menu logo texture after world transitions.
+- Allow reinjection from the same DLL path after ejecting.
+
 ## v0.6.1 — 2026-11-15
 
 - Show resolved JSON UI control types in F5 hover inspection, including `stack_panel`.

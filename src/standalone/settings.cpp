@@ -3,7 +3,11 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
+#include <array>
+#include <charconv>
 #include <fstream>
+#include <string>
+#include <string_view>
 #include <cmath>
 #include <set>
 #include <stdexcept>
@@ -13,14 +17,20 @@ DiagnosticsSettings parseDiagnostics(const nlohmann::json& settings) {
     DiagnosticsSettings result;
     const auto diagnostics = settings.value("diagnostics", nlohmann::json::object());
     if (!diagnostics.is_object()) throw std::runtime_error("diagnostics must be an object");
-    const bool hasUiScale = settings.contains("ui_scale");
-    if (hasUiScale || diagnostics.contains("scale")) {
-        const auto& scale = hasUiScale ? settings.at("ui_scale") : diagnostics.at("scale");
-        if (!scale.is_number()) throw std::runtime_error("ui_scale must be a number between 0.25 and 4");
-        const double value = scale.get<double>();
-        if (!std::isfinite(value) || value < 0.25 || value > 4) throw std::runtime_error("ui_scale must be between 0.25 and 4");
-        result.uiScale = static_cast<float>(value);
-    }
+    const auto ui = settings.value("ui", nlohmann::json::object());
+    if (!ui.is_object()) throw std::runtime_error("ui must be an object");
+    const auto readNumber = [](const nlohmann::json& field, double min, double max, const char* error) {
+        if (!field.is_number()) throw std::runtime_error(error);
+        const double value = field.get<double>();
+        if (!std::isfinite(value) || value < min || value > max) throw std::runtime_error(error);
+        return static_cast<float>(value);
+    };
+    const auto* scale = ui.contains("scale") ? &ui.at("scale") :
+        settings.contains("ui_scale") ? &settings.at("ui_scale") :
+        diagnostics.contains("scale") ? &diagnostics.at("scale") : nullptr;
+    if (scale) result.uiScale = readNumber(*scale, 0.25, 4, "ui.scale must be a number between 0.25 and 4");
+    if (ui.contains("alpha"))
+        result.uiAlpha = readNumber(ui.at("alpha"), 0, 1, "ui.alpha must be a number between 0 and 1");
     if (diagnostics.contains("factories")) {
         const auto& factories = diagnostics.at("factories");
         if (!factories.is_object()) throw std::runtime_error("diagnostics.factories must be an object");
@@ -34,28 +44,105 @@ DiagnosticsSettings parseDiagnostics(const nlohmann::json& settings) {
     }
     return result;
 }
+struct BindingSetting {
+    const char* name;
+    const char* defaultValue;
+    KeyChord Keybinds::*member;
+};
+constexpr std::array bindings{
+    BindingSetting{"diagnostics", "F3", &Keybinds::diagnostics},
+    BindingSetting{"tooltip", "F5", &Keybinds::tooltip},
+    BindingSetting{"eject", "Ctrl+K", &Keybinds::eject},
+    BindingSetting{"reload", "Ctrl+R", &Keybinds::reload},
+};
+
+KeyChord parseKeyChord(std::string_view text, const char* name) {
+    KeyChord chord{};
+    const auto invalid = [&] { return std::runtime_error(std::string("Invalid keybinds.") + name); };
+    for (;;) {
+        const auto separator = text.find('+');
+        const auto part = text.substr(0, separator);
+        const auto first = part.find_first_not_of(" \t");
+        if (first == std::string_view::npos) throw invalid();
+        auto token = std::string(part.substr(first, part.find_last_not_of(" \t") - first + 1));
+        for (auto& ch : token) if (ch >= 'a' && ch <= 'z') ch -= 'a' - 'A';
+        if (separator == std::string_view::npos) {
+            const char key = token.front();
+            if (token.size() == 1 && ((key >= 'A' && key <= 'Z') || (key >= '0' && key <= '9'))) {
+                chord.key = static_cast<std::uint8_t>(key);
+                return chord;
+            }
+            if (key == 'F') {
+                unsigned number{};
+                const auto end = token.data() + token.size();
+                const auto parsed = std::from_chars(token.data() + 1, end, number);
+                if (parsed.ec == std::errc{} && parsed.ptr == end && number >= 1 && number <= 24) {
+                    chord.key = static_cast<std::uint8_t>(0x70 + number - 1); // VK_F1 + index
+                    return chord;
+                }
+            }
+            throw invalid();
+        }
+        bool* modifier = nullptr;
+        if (token == "CTRL" || token == "CONTROL") modifier = &chord.ctrl;
+        else if (token == "SHIFT") modifier = &chord.shift;
+        else if (token == "ALT") modifier = &chord.alt;
+        if (!modifier || *modifier) throw invalid();
+        *modifier = true;
+        text.remove_prefix(separator + 1);
+    }
 }
-DiagnosticsSettings loadDiagnosticsSettings(const std::filesystem::path& file) {
+
+Settings parseSettings(const nlohmann::json& config) {
+    Settings result;
+    result.diagnostics = parseDiagnostics(config);
+    const auto keybinds = config.value("keybinds", nlohmann::json::object());
+    if (!keybinds.is_object()) throw std::runtime_error("keybinds must be an object");
+    for (std::size_t i = 0; i < bindings.size(); ++i) {
+        const auto& binding = bindings[i];
+        const auto value = keybinds.value(binding.name, std::string(binding.defaultValue));
+        const auto chord = parseKeyChord(value, binding.name);
+        for (std::size_t j = 0; j < i; ++j) {
+            if (chord == result.keybinds.*bindings[j].member)
+                throw std::runtime_error(std::string("Duplicate keybinds.") + binding.name + " and keybinds." + bindings[j].name);
+        }
+        result.keybinds.*binding.member = chord;
+    }
+    return result;
+}
+
+nlohmann::json readSettings(const std::filesystem::path& file) {
     if (std::filesystem::file_size(file) > 16384) throw std::runtime_error("config.json exceeds 16 KiB");
     std::ifstream input(file);
     if (!input) throw std::runtime_error("Cannot read config.json");
-    const auto settings = nlohmann::json::parse(input);
+    auto settings = nlohmann::json::parse(input);
     if (!settings.is_object()) throw std::runtime_error("config.json must contain an object");
-    return parseDiagnostics(settings);
+    return settings;
 }
+}
+
+Settings loadSettings(const std::filesystem::path& file) {
+    return parseSettings(readSettings(file));
+}
+
+DiagnosticsSettings loadDiagnosticsSettings(const std::filesystem::path& file) {
+    return parseDiagnostics(readSettings(file));
+}
+
 void migrateSettings(const std::filesystem::path& file) {
-    auto settings = nlohmann::json::object();
-    if (std::filesystem::exists(file)) {
-        if (std::filesystem::file_size(file) > 16384) throw std::runtime_error("config.json exceeds 16 KiB");
-        std::ifstream input(file);
-        if (!input) throw std::runtime_error("Cannot read config.json");
-        settings = nlohmann::json::parse(input);
-        if (!settings.is_object()) throw std::runtime_error("config.json must contain an object");
+    auto settings = std::filesystem::exists(file) ? readSettings(file) : nlohmann::json::object();
+    const auto parsed = parseSettings(settings); // Validate before replacing the original file.
+    const auto& diagnostics = parsed.diagnostics;
+    auto& keybinds = settings["keybinds"];
+    for (const auto& binding : bindings) {
+        if (!keybinds.contains(binding.name)) keybinds[binding.name] = binding.defaultValue;
     }
-    const auto diagnostics = parseDiagnostics(settings); // Validate before replacing the original file.
     auto& section = settings["diagnostics"];
     if (section.is_null()) section = nlohmann::json::object();
-    settings["ui_scale"] = diagnostics.uiScale;
+    auto& ui = settings["ui"];
+    ui["alpha"] = diagnostics.uiAlpha;
+    ui["scale"] = diagnostics.uiScale;
+    settings.erase("ui_scale");
     section.erase("scale");
     auto& factories = section["factories"];
     if (factories.is_null()) factories = nlohmann::json::object();

@@ -25,6 +25,19 @@ When adding files, prefer this layout unless existing build tooling requires ano
 
 Keep generated binaries, dumps, and machine-specific configuration out of source control. Do not commit proprietary game binaries, extracted assets, credentials, or raw memory dumps.
 
+## Local builds
+
+Use `.local/build/current/` as the shared local build folder. Build the standalone Windows DLL into `.local/build/current/standalone/ConduitClient.dll` and reuse that path for each test build. Keep temporary analysis, test-only build trees, and release packaging out of the path shared for testing.
+
+From the repository root, configure and build with:
+
+```sh
+cmake -S . -B .local/build/current -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-x86_64.cmake \
+  -DCMAKE_BUILD_TYPE=Release -DCONDUIT_STANDALONE_LEGACY_RELOAD=ON -DBUILD_TESTING=OFF
+cmake --build .local/build/current --target ConduitStandalone
+```
+
 ## Reverse-engineering notes
 
 Record findings under `docs/reverse-engineering/` as Markdown, grouped by subsystem or feature. For each finding, include:

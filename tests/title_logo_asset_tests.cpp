@@ -13,6 +13,11 @@ int main() {
         require(fs::file_size(image) == 153289);
         std::ofstream(image,std::ios::binary|std::ios::trunc) << "broken";
         require(conduit::standalone::prepareTitleLogoFile(root) == image && fs::file_size(image) == 153289);
+        const auto returnImage = conduit::standalone::prepareTitleLogoFile(root, 1);
+        const auto nextReturnImage = conduit::standalone::prepareTitleLogoFile(root, 2);
+        require(image != returnImage && nextReturnImage != returnImage && image != nextReturnImage);
+        require(fs::file_size(returnImage) == fs::file_size(image));
+        require(conduit::standalone::prepareTitleLogoFile(root, 1) == returnImage);
         const auto local = root/"local", roaming = root/"roaming";
         require(!conduit::standalone::vanillaGlobalPacks(local,roaming));
         const auto profile = roaming/"Minecraft Bedrock/Users/123/games/com.mojang";

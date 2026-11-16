@@ -4,6 +4,7 @@
 #include "core/debug_panel.hpp"
 #include "core/hover_inspection.hpp"
 #include "core/diagnostics_settings.hpp"
+#include "core/keybinds.hpp"
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -15,7 +16,9 @@ namespace conduit { class Logger; }
 namespace conduit::windows {
 // Written only after the real backend reports success; excludes file validation.
 struct DebugReloadStats {
-    DiagnosticsSettings settings; // Immutable after initialization.
+    // Read and updated on the overlay worker.
+    DiagnosticsSettings settings;
+    Keybinds keybinds;
     std::filesystem::path titleLogoFile; // DLL-owned cache PNG; empty disables title replacement.
     std::string_view clientVersion = "Unavailable"; // Static selected profile metadata.
     DebugPanelMailbox panel; // Copied presentation state; native rendering reads without waiting.

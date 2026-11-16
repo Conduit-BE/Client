@@ -820,7 +820,8 @@ public:
     }
 };
 }
-static bool isActiveView(void* view, void* scene, bool frontendOnly) noexcept {
+enum class SceneStack { Active, Frontend, Player };
+static bool isActiveView(void* view, void* scene, SceneStack requiredStack) noexcept {
     // The owner is borrowed only while the original, naturally entered frame is
     // executing. Never dereference a cached heap identity from a later callback.
     if (!profile || !borrowedFrameOwner || !view || !scene) return false;
@@ -833,7 +834,8 @@ static bool isActiveView(void* view, void* scene, bool frontendOnly) noexcept {
     if (!client || readPointerAt(player) != state.base+profile->reload.sceneStackTableRva ||
         !readAt(player,profile->layout.stackScenes,&playerScenes,sizeof(playerScenes)) ||
         playerScenes.end < playerScenes.begin || playerScenes.capacity < playerScenes.end ||
-        (frontendOnly && playerScenes.begin != playerScenes.end)) return false;
+        (requiredStack == SceneStack::Frontend && playerScenes.begin != playerScenes.end) ||
+        (requiredStack == SceneStack::Player && playerScenes.begin == playerScenes.end)) return false;
     const auto owner = reinterpret_cast<std::uintptr_t>(borrowedFrameOwner);
     const auto stack = playerScenes.begin != playerScenes.end ? player :
         readPointerAt(owner,profile->layout.ownerFrontendStack);
@@ -848,10 +850,13 @@ static bool isActiveView(void* view, void* scene, bool frontendOnly) noexcept {
         readPointerAt(active,profile->layout.sceneView) == reinterpret_cast<std::uintptr_t>(view);
 }
 bool isActiveTitleView(void* view, void* scene) noexcept {
-    return isActiveView(view, scene, true);
+    return isActiveView(view, scene, SceneStack::Frontend);
+}
+bool isActiveWorldView(void* view, void* scene) noexcept {
+    return isActiveView(view, scene, SceneStack::Player);
 }
 bool inspectHoveredControl(void* view, void* scene, float x, float y, HoveredControl& result) noexcept {
-    if (!isActiveView(view, scene, false)) return false;
+    if (!isActiveView(view, scene, SceneStack::Active)) return false;
     // Verified for all three profiles. See docs/reverse-engineering/1.26.60-hover-inspector.md.
     constexpr std::size_t positionOffset = 0x10, flagsOffset = 0x18, sizeOffset = 0x48, layerOffset = 0x68;
     constexpr unsigned positionDirty = 1, visibleMask = 0xc;

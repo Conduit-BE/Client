@@ -25,21 +25,47 @@ int main() {
         require(failed && read(config) == "{invalid");
         fs::remove(config); conduit::standalone::migrateSettings(config); require(conduit::standalone::loadDiagnosticsSettings(config).uiScale == 1.0f);
         const auto defaults = conduit::standalone::loadDiagnosticsSettings(config);
-        require(defaults.factoriesEnabled && defaults.emptyFactories);
+        require(defaults.factoriesEnabled && defaults.emptyFactories && defaults.uiAlpha == 0.5f);
         std::ofstream(config) << R"({"diagnostics":{"scale":0.7,"factories":{"enabled":true,"empty":false},"future":9}})";
         conduit::standalone::migrateSettings(config);
         const auto custom = conduit::standalone::loadDiagnosticsSettings(config);
         require(custom.uiScale == 0.7f && !custom.emptyFactories);
-        require(read(config).find("\"ui_scale\"") != std::string::npos && read(config).find("\"scale\"") == std::string::npos);
+        require(read(config).find("\"ui_scale\"") == std::string::npos && read(config).find("\"ui\"") != std::string::npos);
         require(!custom.showFactory(0,0) && custom.showFactory(1,0) && custom.showFactory(0,1));
         auto hidden = custom; hidden.factoriesEnabled = false; require(!hidden.showFactory(1,1));
         require(read(config).find("future") != std::string::npos);
         std::ofstream(config) << R"({"ui_scale":1.5,"diagnostics":{"scale":0.7}})";
         conduit::standalone::migrateSettings(config);
         require(conduit::standalone::loadDiagnosticsSettings(config).uiScale == 1.5f);
-        for (const auto* invalid : {R"({"ui_scale":0})", R"({"ui_scale":true})", R"({"diagnostics":{"scale":0}})", R"({"diagnostics":{"factories":{"empty":1}}})", R"({"diagnostics":null})"}) {
+        std::ofstream(config) << R"({"ui":{"scale":2,"alpha":0,"future":13},"ui_scale":1.5,"diagnostics":{"scale":0.7}})";
+        conduit::standalone::migrateSettings(config);
+        const auto ui = conduit::standalone::loadSettings(config).diagnostics;
+        require(ui.uiScale == 2.0f && ui.uiAlpha == 0.0f);
+        require(read(config).find("\"future\": 13") != std::string::npos);
+        for (const auto* invalid : {R"({"ui":null})", R"({"ui":{"alpha":-0.1}})", R"({"ui":{"alpha":1.1}})", R"({"ui":{"alpha":true}})", R"({"ui":{"scale":5}})", R"({"ui_scale":0})", R"({"ui_scale":true})", R"({"diagnostics":{"scale":0}})", R"({"diagnostics":{"factories":{"empty":1}}})", R"({"diagnostics":null})"}) {
             std::ofstream(config) << invalid; failed = false;
             try { conduit::standalone::migrateSettings(config); } catch (...) { failed = true; }
+            require(failed && read(config) == invalid);
+        }
+        std::ofstream(config) << R"({"keybinds":{"reload":" shift + Control + f12 ","tooltip":"Alt+5","future":true},"launcher":{"version":"v0.6.1-beta","future":42}})";
+        conduit::standalone::migrateSettings(config);
+        const auto settings = conduit::standalone::loadSettings(config);
+        require(settings.keybinds.diagnostics == conduit::KeyChord{0x72});
+        require(settings.keybinds.eject == conduit::KeyChord{'K', true});
+        require(settings.keybinds.reload == conduit::KeyChord{0x7b, true, true});
+        require(settings.keybinds.tooltip == conduit::KeyChord{'5', false, false, true});
+        require(migrated.find("\"launcher\"") == std::string::npos);
+        require(read(config).find("\"version\": \"v0.6.1-beta\"") != std::string::npos);
+        std::ofstream(config) << R"({"launcher":{"version":42,"future":17}})";
+        require(conduit::standalone::loadSettings(config).keybinds.reload == conduit::KeyChord{'R', true});
+        conduit::standalone::migrateSettings(config);
+        require(read(config).find("\"version\": 42") != std::string::npos);
+        require(read(config).find("\"future\": 17") != std::string::npos);
+        for (const auto* invalid : {R"({"keybinds":{"reload":"F3"}})", R"({"keybinds":{"reload":"Ctrl++R"}})",
+                                    R"({"keybinds":{"reload":"Ctrl+Ctrl+R"}})", R"({"keybinds":{"reload":"F25"}})"}) {
+            std::ofstream(config) << invalid;
+            failed = false;
+            try { conduit::standalone::loadSettings(config); } catch (...) { failed = true; }
             require(failed && read(config) == invalid);
         }
         std::ofstream(root / "standalone.log") << "old log";

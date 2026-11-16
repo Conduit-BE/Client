@@ -30,6 +30,11 @@ int main() {
         require(!deactivation.update(false, true));
         require(deactivation.update(true, true));
         require(deactivation.update(true, true) && deactivation.update(false, false)); // Sticky stop.
+        DeactivationRequest polledEject;
+        require(!polledEject.requested());
+        polledEject.request(); // Overlay consumes a press from the configured chord poller.
+        require(polledEject.requested()); // The fallback worker still sees it after the overlay returns.
+        require(polledEject.update(false, false));
         Initialization lifecycle;
         std::atomic<unsigned> winners{0};
         std::vector<std::jthread> workers;

@@ -25,15 +25,20 @@ SpriteDraw originalSprite{};
 ImageDraw originalImage{};
 std::atomic<bool> enabled{false};
 std::atomic<bool> rendered{false};
-ActiveTitleView activeGuard{};
+ActiveLogoView titleGuard{}, worldGuard{};
 VanillaTitleProvenance provenanceGuard{};
-std::string imagePath;
-// Native allocations and handles are intentionally retained until process exit.
-// A disabled callback is not proof that a previously deferred GPU submission has
-// consumed its borrowed image reference. The standalone DLL is already pinned.
-alignas(16) std::array<std::byte,56> resource{};
-alignas(16) std::array<std::uintptr_t,4> texture{};
-bool attemptedImport = false;
+// Deferred draws borrow the image pointer. Retain native ownership until exit
+// and bound the number of distinct imports while retirement remains unverified.
+struct LogoImport {
+    std::string path;
+    alignas(16) std::array<std::byte,56> resource{};
+    alignas(16) std::array<std::uintptr_t,4> texture{};
+    bool attempted{};
+};
+std::array<LogoImport,titleLogoImportLimit> imports{};
+std::atomic<unsigned> requestedGeneration{0}, publishedGeneration{0};
+std::atomic<bool> sawWorld{false};
+unsigned generation = 0;
 void* importContextIdentity{};
 std::atomic_flag importing = ATOMIC_FLAG_INIT;
 struct ViewFrame { void* view; void* context; bool active; };
@@ -85,24 +90,30 @@ bool eligibleSprite(void* sprite, void* image, ViewFrame& frame) noexcept {
         read<unsigned>(image,logo.imageWidth),read<unsigned>(image,logo.imageHeight));
 }
 void* replacementImage(void* context) noexcept {
-    // One native context type/group is accepted for this session. Avoid using an
-    // old group's retained handles after a different native owner appears.
     if (importing.test_and_set(std::memory_order_acquire)) return nullptr;
     struct Unlock { ~Unlock() { importing.clear(std::memory_order_release); } } unlock;
     const auto identity = read<void*>(context,profile->logo.textureGroup);
-    if (!attemptedImport) {
-        attemptedImport = true;
-        importContextIdentity = identity;
-        const Span path{imagePath.data(),imagePath.size()};
-        reinterpret_cast<ConstructResource>(base+profile->logo.resourceConstructorRva)(resource.data(),&path);
-        const std::uint32_t rawPath = 2;
-        std::memcpy(resource.data(),&rawPath,sizeof(rawPath));
-        const auto hash = resourceLocationHash(2,read<std::uint64_t>(resource.data(),0x28));
-        std::memcpy(resource.data()+0x30,&hash,sizeof(hash));
-        reinterpret_cast<GetTexture>(base+profile->logo.textureGetterRva)(context,texture.data(),resource.data(),false);
+    if (!identity) return nullptr;
+    const bool returnedFromWorld = sawWorld.exchange(false, std::memory_order_acq_rel);
+    if (importContextIdentity && (returnedFromWorld || importContextIdentity != identity) && generation < imports.size()) {
+        ++generation;
+        requestedGeneration.store(generation, std::memory_order_release);
     }
-    if (identity != importContextIdentity) return nullptr;
-    auto* image = reinterpret_cast<void*>(texture[0]);
+    importContextIdentity = identity;
+    if (generation >= imports.size() || publishedGeneration.load(std::memory_order_acquire) != generation)
+        return nullptr;
+    auto& entry = imports[generation];
+    if (!entry.attempted) {
+        entry.attempted = true;
+        const Span path{entry.path.data(),entry.path.size()};
+        reinterpret_cast<ConstructResource>(base+profile->logo.resourceConstructorRva)(entry.resource.data(),&path);
+        const std::uint32_t rawPath = 2;
+        std::memcpy(entry.resource.data(),&rawPath,sizeof(rawPath));
+        const auto hash = resourceLocationHash(2,read<std::uint64_t>(entry.resource.data(),0x28));
+        std::memcpy(entry.resource.data()+0x30,&hash,sizeof(hash));
+        reinterpret_cast<GetTexture>(base+profile->logo.textureGetterRva)(context,entry.texture.data(),entry.resource.data(),false);
+    }
+    auto* image = reinterpret_cast<void*>(entry.texture[0]);
     if (!readable(image,profile->logo.imageHeight+4) ||
         read<unsigned>(image,profile->logo.imageWidth) != 2004 ||
         read<unsigned>(image,profile->logo.imageHeight) != 686) return nullptr;
@@ -134,22 +145,38 @@ void onImage(void* context,void* image,const Vec2* position,const Vec2* size,con
 }
 bool titleLogoInstalled() noexcept { return enabled.load(std::memory_order_acquire); }
 bool titleLogoRendered() noexcept { return rendered.load(std::memory_order_acquire); }
-void setTitleLogoGuards(ActiveTitleView active,VanillaTitleProvenance provenance) noexcept {
-    if (!enabled.load()) { activeGuard = active; provenanceGuard = provenance; }
+unsigned requestedTitleLogoGeneration() noexcept {
+    return requestedGeneration.load(std::memory_order_acquire);
+}
+bool supplyTitleLogoFile(unsigned index, const std::filesystem::path& imageFile) {
+    if (index >= imports.size() || (index && index <= publishedGeneration.load(std::memory_order_relaxed)))
+        return false;
+    const auto utf8 = imageFile.u8string();
+    const std::string path(reinterpret_cast<const char*>(utf8.data()), utf8.size());
+    if (path.empty() || path.size() >= 1024 || path.find('\0') != std::string::npos) return false;
+    imports[index].path = path;
+    publishedGeneration.store(index, std::memory_order_release);
+    return true;
+}
+void setTitleLogoGuards(ActiveLogoView title,ActiveLogoView world,VanillaTitleProvenance provenance) noexcept {
+    if (!enabled.load()) { titleGuard = title; worldGuard = world; provenanceGuard = provenance; }
 }
 void beginTitleLogoView(void* view,void* context) noexcept {
     if (overflowDepth || frameDepth == frames.size()) { ++overflowDepth; return; }
     bool active = false;
-    if (enabled.load(std::memory_order_acquire) && profile && activeGuard && provenanceGuard &&
+    if (enabled.load(std::memory_order_acquire) && profile && titleGuard && worldGuard && provenanceGuard &&
         readable(context,profile->logo.contextScene+sizeof(void*)) &&
         read<std::uintptr_t>(context,0) == base+profile->renderer.contextTableRva) {
+        auto* scene = read<void*>(context,profile->logo.contextScene);
+        if (!sawWorld.load(std::memory_order_relaxed) && worldGuard(view,scene))
+            sawWorld.store(true,std::memory_order_release);
         if (readable(view,profile->layout.viewTree+sizeof(void*))) {
             const auto* tree = read<void*>(view,profile->layout.viewTree);
             const auto* root = readable(tree,16) ? read<void*>(tree,8) : nullptr;
             if (readable(tree,sizeof(void*)) && read<std::uintptr_t>(tree,0) == base+profile->reload.visualTreeTableRva &&
                 readable(root,profile->layout.controlName+32) &&
                 nativeString(static_cast<const std::byte*>(root)+profile->layout.controlName) == "start_screen")
-                active = activeGuard(view,read<void*>(context,profile->logo.contextScene));
+                active = titleGuard(view,scene);
         }
     }
     frames[frameDepth++] = {view,context,active};
@@ -162,13 +189,11 @@ bool installTitleLogo(std::filesystem::path imageFile) noexcept {
     if (enabled.load() || originalImage || originalSprite) return false;
     try {
         profile = minecraft::runningCompatibility();
-        if (!profile || !profile->features.mainMenuLogo || !activeGuard || !provenanceGuard) return false;
-        const auto utf8 = imageFile.u8string();
-        imagePath.assign(reinterpret_cast<const char*>(utf8.data()),utf8.size());
-        if (imagePath.empty() || imagePath.size() >= 1024 || imagePath.find('\0') != std::string::npos) return false;
+        if (!profile || !profile->features.mainMenuLogo || !titleGuard || !worldGuard || !provenanceGuard ||
+            !supplyTitleLogoFile(0,imageFile)) return false;
         base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
         const auto& logo = profile->logo;
-        if (logo.resourceSize != resource.size()) return false;
+        if (logo.resourceSize != imports[0].resource.size()) return false;
         if (!minecraft::matchesMainExecutableCode(logo.spriteDrawRva,logo.spritePrefix) ||
             !minecraft::matchesMainExecutableCode(logo.drawImageRva,logo.drawPrefix) ||
             !minecraft::matchesMainExecutableCode(logo.resourceConstructorRva,logo.constructorPrefix) ||

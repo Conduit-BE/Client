@@ -1,8 +1,15 @@
 #pragma once
 #include "core/diagnostics_settings.hpp"
+#include "core/keybinds.hpp"
 #include <filesystem>
 #include <vector>
 namespace conduit::standalone {
+struct Settings {
+    DiagnosticsSettings diagnostics;
+    Keybinds keybinds;
+};
+
+Settings loadSettings(const std::filesystem::path& file);
 // Obsolete keys are ignored regardless of their former types, then removed atomically.
 DiagnosticsSettings loadDiagnosticsSettings(const std::filesystem::path& file);
 void migrateSettings(const std::filesystem::path& file);

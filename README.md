@@ -33,13 +33,13 @@ The project is actively developed, with more debugging, profiling, and developme
 - **UI Hover Inspector** — Highlight the topmost visible legacy UI control and inspect its runtime properties and ancestors.
 - **Element Statistics** — Monitor runtime UI element counts and factory statistics.
 
-Set `ui_scale` in `config.json` to resize the diagnostics and hover-tooltip. Restart Minecraft after changing settings. [Configuration](docs/configuration.md#diagnostics)
+Edit `config.json` to change hotkeys or adjust the diagnostics and tooltip with `ui.scale` and `ui.alpha`. Press the active reload shortcut to apply your changes. [Configuration](docs/configuration.md#diagnostics)
 
 ## Installation
 
 1. Download the latest compatible `ConduitClient.dll` from the [latest release](https://github.com/Conduit-BE/Client/releases/latest).
 2. Verify the downloaded DLL against the provided `SHA256SUMS` file.
-3. Configure your DLL injector to load `ConduitClient.dll`. Alternatively use the dedicated [Conduit Launcher](https://github.com/Conduit-BE/Launcher).
+3. Configure your DLL injector to load `ConduitClient.dll`. Use the dedicated [Conduit Launcher](https://github.com/Conduit-BE/Launcher) or BedrockOnLinux’s built-in injector. On LeviLauncher 1.1.0, import the DLL as a `preload-native` mod.
 4. Launch a supported Minecraft: Bedrock Edition version.
 5. Open a world or join a server with your resource pack enabled.
 
@@ -49,12 +49,12 @@ Set `ui_scale` in `config.json` to resize the diagnostics and hover-tooltip. Res
 
 Conduit Client provides keyboard shortcuts to simplify your JSON UI development workflow.
 
-| Keybind | Action | Description |
+| Default keybind | Action | Description |
 |---|---|---|
-| <code>Ctrl&nbsp;+&nbsp;R</code> | Reload JSON UI | Reloads JSON UI definitions from the active development resource pack. |
+| <code>Ctrl&nbsp;+&nbsp;R</code> | Reload JSON UI and settings | Reloads mounted JSON UI definitions and applies changes to Conduit’s config. |
 | `F3` | Toggle&nbsp;Diagnostics | Shows or hides the debug overlay with screen information, UI statistics, and performance metrics. |
 | `F5` | Toggle&nbsp;UI&nbsp;Inspector | Toggles the blue highlight and tooltip for the topmost visible legacy UI control under the cursor. |
-| <code>Ctrl&nbsp;+&nbsp;K</code> | Eject Client | Safely deactivates Conduit Client; the DLL remains pinned until Minecraft exits. |
+| <code>Ctrl&nbsp;+&nbsp;K</code> | Eject Client | Deactivates Conduit Client so it can be injected again. |
 
 ## Diagnostics and tooltip
 
@@ -112,7 +112,8 @@ Conduit Client is actively developed with a focus on stability, performance, and
 
 Useful resources:
 
-- [v0.6.1-beta release notes](docs/releases/v0.6.1.md)
+- [v1.0.0-stable release notes](docs/releases/v1.0.0-stable.md)
+- [v0.6.1 release notes](docs/releases/v0.6.1.md)
 - [Standalone installation and build](docs/standalone-initialization.md)
 - [Foundation API and tests](docs/build.md)
 - [Native JSON UI reverse-engineering research](docs/reverse-engineering/1.26.60-json-ui-only-prototype.md)

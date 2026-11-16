@@ -34,7 +34,6 @@ std::atomic<unsigned> callbacks{0};
 DebugPanelMailbox* mailbox{};
 HWND gameWindow{};
 InspectHoveredControl inspectHovered{};
-float tooltipScale = 1.0f;
 std::atomic<bool> hoverActive{false};
 struct Call { Call() { callbacks.fetch_add(1); } ~Call() { callbacks.fetch_sub(1); } };
 template<class T> T& field(void* object, std::size_t offset) {
@@ -114,7 +113,7 @@ void render(Frame& frame, void* view) {
         const Rect bounds{std::clamp(left, 0.f, width), std::clamp(left + std::abs(hovered.width), 0.f, width),
                           std::clamp(top, 0.f, height), std::clamp(top + std::abs(hovered.height), 0.f, height)};
         const Color blue{0.40f, 0.76f, 1.f};
-        fill(context, &bounds, &blue, 0.30f);
+        if (text.alpha > 0) fill(context, &bounds, &blue, text.alpha * 0.6f);
         if (frame.font) {
             const int propertyBytes = std::snprintf(details, sizeof(details),
                 "Name: %s\nType: %s\nLayer: %lld\nSize: %.1f x %.1f\nPosition: %.1f, %.1f\nVisible: %s",
@@ -130,16 +129,16 @@ void render(Frame& frame, void* view) {
                 std::snprintf(details + used, sizeof(details) - used, "\n  ...");
             tooltip = layoutDebugPanel(details, width, height, [&](const char* value, std::size_t size) {
                 const Span span{value, size};
-                return reinterpret_cast<Width>(base+profile->renderer.textWidthRva)(frame.font, &span, tooltipScale, false);
-            }, tooltipScale);
+                return reinterpret_cast<Width>(base+profile->renderer.textWidthRva)(frame.font, &span, text.scale, false);
+            }, text.scale);
             tooltip.left = std::clamp(bounds.left, 0.f, std::max(0.f, width - tooltip.width));
             tooltip.top = std::clamp(bounds.top >= tooltip.height ? bounds.top - tooltip.height : bounds.bottom,
                                      0.f, std::max(0.f, height - tooltip.height));
         }
     }
-    const auto draw = [&](const DebugPanelLayout& box, float opacity) {
+    const auto draw = [&](const DebugPanelLayout& box) {
         const Rect panel{box.left, box.left+box.width, box.top, box.top+box.height};
-        fill(context, &panel, &background, opacity);
+        if (text.alpha > 0) fill(context, &panel, &background, text.alpha);
         const Measure measure{box.fontScale};
         const int caret = -1;
         for (unsigned index = 0; index < box.count; ++index) {
@@ -148,12 +147,12 @@ void render(Frame& frame, void* view) {
             const float y = panel.top+box.padding+index*box.lineHeight;
             const Rect bounds{panel.left+box.padding, panel.right-box.padding, y, y+10*box.fontScale};
             reinterpret_cast<DrawText>(base+profile->renderer.drawTextRva)(
-                context, frame.font, &bounds, &span, &foreground, 1, 0, &measure, &caret);
+                context, frame.font, &bounds, &span, &foreground, 1.0f, 0, &measure, &caret);
         }
     };
     const bool drawTooltip = tooltip.count && tooltip.count <= available;
-    if (drawPanel && (!drawTooltip || layout.count + tooltip.count <= available)) draw(layout, 0.5f);
-    if (drawTooltip) draw(tooltip, 0.75f);
+    if (drawPanel && (!drawTooltip || layout.count + tooltip.count <= available)) draw(layout);
+    if (drawTooltip) draw(tooltip);
     // Borrowed strings remain alive until this synchronous flush returns. Bit 32 prevents
     // advancing the font animation timer twice; low 32 bits preserve the natural text depth.
     if (drawPanel || drawTooltip) originalFlush(context, 0, frame.flushFlags | (std::uint64_t{1}<<32));
@@ -190,7 +189,7 @@ void onView(void* view, void* context) {
 }
 }
 bool NativeDebugRenderer::install(DebugPanelMailbox& panel, const std::filesystem::path& logoFile,
-                                  HWND window, InspectHoveredControl inspect, float uiScale) noexcept {
+                                  HWND window, InspectHoveredControl inspect) noexcept {
     wchar_t path[32768]{};
     if (!GetModuleFileNameW(nullptr, path, 32768)) return false;
     const auto* name = std::wcsrchr(path, L'\\');
@@ -205,7 +204,6 @@ bool NativeDebugRenderer::install(DebugPanelMailbox& panel, const std::filesyste
     mailbox = &panel;
     gameWindow = window;
     inspectHovered = inspect;
-    tooltipScale = uiScale;
     if (MH_EnableHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva)) != MH_OK) return false;
     if (MH_EnableHook(reinterpret_cast<void*>(base+profile->renderer.flushTextRva)) != MH_OK) {
         MH_DisableHook(reinterpret_cast<void*>(base+profile->renderer.viewRenderRva)); return false;

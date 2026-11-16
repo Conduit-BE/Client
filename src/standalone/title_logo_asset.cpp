@@ -5,15 +5,18 @@
 #include <fstream>
 #include <cstring>
 #include <stdexcept>
+#include <string>
 #include <vector>
 namespace conduit::standalone {
-std::filesystem::path prepareTitleLogoFile(const std::filesystem::path& root) {
+std::filesystem::path prepareTitleLogoFile(const std::filesystem::path& root, unsigned generation) {
     const auto image = embeddedLogo();
     if (image.png.empty() || image.width != 2004 || image.height != 686)
         throw std::runtime_error("Embedded title PNG unavailable; original logo retained");
     const auto directory = root / "cache";
     std::filesystem::create_directories(directory);
-    const auto file = directory / "logo-3d2b75a9f89f0a0c.png";
+    const auto name = generation ? "logo-3d2b75a9f89f0a0c-" + std::to_string(generation) + ".png"
+                                 : "logo-3d2b75a9f89f0a0c.png";
+    const auto file = directory / name;
     bool matches = false;
     if (std::filesystem::is_regular_file(file) && std::filesystem::file_size(file) == image.png.size()) {
         std::ifstream input(file,std::ios::binary);

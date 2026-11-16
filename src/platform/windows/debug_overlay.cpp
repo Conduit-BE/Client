@@ -1,7 +1,7 @@
 #include "platform/windows/debug_overlay.hpp"
 #include "platform/windows/native_debug_renderer.hpp"
 #include "platform/windows/native_title_logo.hpp"
-#include "core/hotkey.hpp"
+#include "platform/windows/key_chord.hpp"
 #include "core/presentation_rate.hpp"
 #include "core/logger.hpp"
 #include <windows.h>
@@ -144,8 +144,8 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const 
     PresentHooks hooks;
     hooks.install(game); // Probe uses the existing HWND; it creates no desktop window.
     NativeDebugRenderer renderer;
-    const bool nativeReady = renderer.install(stats.panel, stats.titleLogoFile, game, stats.inspectHoveredControl,
-                                              stats.settings.uiScale);
+    stats.panel.publish(text, false, stats.settings.uiScale, stats.settings.uiAlpha);
+    const bool nativeReady = renderer.install(stats.panel, stats.titleLogoFile, game, stats.inspectHoveredControl);
     if (stats.diagnostics) stats.diagnostics->write(nativeReady ? "info" : "warning", nativeReady ?
         "F3 rendering: Minecraft native UI font and filled rectangle; logical viewport top-left" :
         "F3 native renderer unavailable; no OS overlay fallback installed");
@@ -154,10 +154,10 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const 
         "Title logo hooks armed; waiting for verified active vanilla title and image load" :
         "Title logo hooks unavailable; original logo retained");
     bool loggedTitleDraw = false;
-    RisingEdge edge;
-    RisingEdge hoverEdge;
-    edge.update((GetAsyncKeyState(VK_F3) & 0x8000) != 0);
-    hoverEdge.update((GetAsyncKeyState(VK_F5) & 0x8000) != 0);
+    KeyChordPoller diagnosticsKey;
+    KeyChordPoller tooltipKey;
+    diagnosticsKey.poll(stats.keybinds.diagnostics);
+    tooltipKey.poll(stats.keybinds.tooltip);
     bool visible = false;
     bool inspecting = false;
     auto refresh = Clock::time_point{};
@@ -171,12 +171,12 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const 
             stats.diagnostics->write("info", "Title logo rendered using native texture import; other image draws preserved");
         }
         const bool focused = GetForegroundWindow() == game && !IsIconic(game);
-        const bool pressed = edge.update((GetAsyncKeyState(VK_F3) & 0x8000) != 0);
+        const bool pressed = diagnosticsKey.poll(stats.keybinds.diagnostics);
         if (pressed && focused) visible = !visible;
-        if (nativeReady && hoverEdge.update((GetAsyncKeyState(VK_F5) & 0x8000) != 0) && focused) {
+        if (nativeReady && tooltipKey.poll(stats.keybinds.tooltip) && focused) {
             inspecting = !inspecting;
             if (stats.diagnostics && stats.inspectHoveredControl)
-                stats.diagnostics->write("info", inspecting ? "F5 hover inspector enabled" : "F5 hover inspector disabled");
+                stats.diagnostics->write("info", inspecting ? "Hover inspector enabled" : "Hover inspector disabled");
         }
         if (nativeReady) renderer.setHoverInspection(inspecting && focused);
         const auto now = Clock::now();
@@ -266,10 +266,10 @@ void runDebugOverlay(const wchar_t* disablePath, DebugReloadStats& stats, const 
             append("  frames_per_second: %s\n", fps);
             append("  conduit_version: %s\n", CONDUIT_DISPLAY_VERSION);
             append("  client_version: %.*s", static_cast<int>(stats.clientVersion.size()), stats.clientVersion.data());
-            stats.panel.publish(text, true, stats.settings.uiScale);
+            stats.panel.publish(text, true, stats.settings.uiScale, stats.settings.uiAlpha);
             refresh = now;
         }
-        if (!visible || !focused) stats.panel.publish(text, false);
+        if (!visible || !focused) stats.panel.publish(text, false, stats.settings.uiScale, stats.settings.uiAlpha);
         Sleep(15);
     }
     stats.panel.publish(text, false);

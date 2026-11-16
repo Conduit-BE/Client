@@ -7,23 +7,25 @@
 #include <mutex>
 
 namespace conduit {
-// Copied text only. Neither this mailbox nor its readers own native UI objects.
+// Copied text and presentation settings. Neither this mailbox nor its readers own native UI objects.
 struct DebugPanelText {
     std::array<char, 8192> text{};
     std::uint64_t revision = 0;
     bool visible = false;
     float scale = 1.0f;
+    float alpha = 0.5f;
 };
 class DebugPanelMailbox {
 public:
-    void publish(const char* text, bool visible, float scale = 1.0f) {
+    void publish(const char* text, bool visible, float scale = 1.0f, float alpha = 0.5f) {
         const std::lock_guard lock(mutex_);
-        if (state_.visible == visible && state_.scale == scale && std::strcmp(state_.text.data(), text) == 0) return;
+        if (state_.visible == visible && state_.scale == scale && state_.alpha == alpha && std::strcmp(state_.text.data(), text) == 0) return;
         const auto length = std::min(std::strlen(text), state_.text.size()-1);
         std::memcpy(state_.text.data(), text, length);
         state_.text[length] = 0;
         state_.visible = visible;
         state_.scale = scale;
+        state_.alpha = alpha;
         ++state_.revision;
     }
     // Rendering never waits for the worker, and releases the lock before native calls.

@@ -9,7 +9,7 @@ namespace conduit::windows {
 class NativeDebugRenderer {
 public:
     bool install(DebugPanelMailbox& panel, const std::filesystem::path& logoFile = {},
-                 HWND window = nullptr, InspectHoveredControl inspect = nullptr, float uiScale = 1.0f) noexcept;
+                 HWND window = nullptr, InspectHoveredControl inspect = nullptr) noexcept;
     void setHoverInspection(bool active) noexcept;
     ~NativeDebugRenderer();
 private:

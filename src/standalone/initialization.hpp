@@ -23,9 +23,11 @@ class DeactivationRequest {
 public:
     explicit DeactivationRequest(bool initiallyDown = false) : edge_(initiallyDown) {}
     bool update(bool chordDown, bool focused) noexcept {
-        if (edge_.update(chordDown) && focused) requested_ = true;
-        return requested_;
+        if (edge_.update(chordDown) && focused) request();
+        return requested();
     }
+    void request() noexcept { requested_ = true; }
+    bool requested() const noexcept { return requested_; }
 private:
     RisingEdge edge_;
     bool requested_ = false;

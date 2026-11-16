@@ -15,5 +15,6 @@ std::string legacyReloadState();
 // Resident copied diagnostics; no game pointer escapes the native callback.
 ScreenMetrics& nativeScreenMetrics() noexcept;
 bool isActiveTitleView(void* view, void* scene) noexcept;
+bool isActiveWorldView(void* view, void* scene) noexcept;
 bool inspectHoveredControl(void* view, void* scene, float x, float y, HoveredControl& result) noexcept;
 }
