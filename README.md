@@ -37,9 +37,9 @@ Set `ui_scale` in `config.json` to resize the diagnostics and hover-tooltip. Res
 
 ## Installation
 
-1. Download the latest compatible `ConduitClient.dll` from the [latest release](https://github.com/Conduit-BE/client/releases/latest).
+1. Download the latest compatible `ConduitClient.dll` from the [latest release](https://github.com/Conduit-BE/Client/releases/latest).
 2. Verify the downloaded DLL against the provided `SHA256SUMS` file.
-3. Configure your Windows x64 DLL injector or BedrockOnLinux's built-in injector to load `ConduitClient.dll`. Alternatively use the dedicated [Conduit Launcher](https://github.com/Conduit-BE/Launcher)
+3. Configure your DLL injector to load `ConduitClient.dll`. Alternatively use the dedicated [Conduit Launcher](https://github.com/Conduit-BE/Launcher).
 4. Launch a supported Minecraft: Bedrock Edition version.
 5. Open a world or join a server with your resource pack enabled.
 
@@ -75,8 +75,6 @@ Press `F5` to toggle the hover inspector. The tooltip shows the control name, ty
 
 ## Version Compatibility
 
-Conduit Client uses a version-aware compatibility system to manage native integration with Minecraft Bedrock.
-
 Each supported Minecraft version requires a verified compatibility profile containing the necessary native addresses, structures, and feature availability.
 
 **Supported Bedrock GDK x64 builds:** `1.26.60.5`, `1.26.62.1`, and `1.26.63.1`.
@@ -92,8 +90,6 @@ Conduit Client stores its configuration and diagnostic logs under:
 ```text
 ConduitClient/
 ├── config.json
-├── dll/
-│   └── ConduitClient.dll
 ├── cache/
 │   └── logo-3d2b75a9f89f0a0c.png
 └── logs/
