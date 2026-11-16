@@ -33,7 +33,30 @@ The project is actively developed, with more debugging, profiling, and developme
 - **UI Hover Inspector** — Highlight the topmost visible legacy UI control and inspect its runtime properties and ancestors.
 - **Element Statistics** — Monitor runtime UI element counts and factory statistics.
 
-Edit `config.json` to change hotkeys or adjust the diagnostics and tooltip with `ui.scale` and `ui.alpha`. Press the active reload shortcut to apply your changes. [Configuration](docs/configuration.md#diagnostics)
+## Configuration
+
+```json
+{
+  "diagnostics": {
+    "factories": {
+      "empty": true,
+      "enabled": true
+    }
+  },
+  "keybinds": {
+    "diagnostics": "F3",
+    "eject": "Ctrl+K",
+    "reload": "Ctrl+R",
+    "tooltip": "F5"
+  },
+  "ui": {
+    "alpha": 0.5,
+    "scale": 1.0
+  }
+}
+```
+
+You can change any of the provided settings under `/%LOCALAPPDATA%/ConduitClient/config.json`. The reload feature also reloads the client's settings.
 
 ## Installation
 
