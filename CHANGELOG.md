@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.1 — 2026-11-16
+
+- Add Windows GDK x64 support for Minecraft Bedrock 1.26.65.1.
+
 ## v1.0.0-stable — 2026-11-16
 
 - Configure and live-reload diagnostics, tooltip, reload, and eject keybinds.

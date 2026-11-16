@@ -76,7 +76,7 @@ Press `F5` to toggle the hover inspector. The tooltip shows the control name, ty
 
 Each supported Minecraft version requires a verified compatibility profile containing the necessary native addresses, structures, and feature availability.
 
-**Supported Bedrock GDK x64 builds:** `1.26.60.5`, `1.26.62.1`, and `1.26.63.1`.
+**Supported Bedrock GDK x64 builds:** `1.26.60.5`, `1.26.62.1`, `1.26.63.1`, and `1.26.65.1`.
 
 ## Configuration and Logs
 

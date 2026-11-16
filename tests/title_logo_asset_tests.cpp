@@ -1,4 +1,5 @@
 #include "standalone/title_logo_asset.hpp"
+#include "standalone/logo_resource.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -9,10 +10,11 @@ int main() {
     namespace fs = std::filesystem;
     const auto root = fs::temp_directory_path()/("conduit-title-test-"+std::to_string(GetCurrentProcessId()));
     try {
+        const auto embeddedSize = conduit::standalone::embeddedLogo().png.size();
         const auto image = conduit::standalone::prepareTitleLogoFile(root);
-        require(fs::file_size(image) == 153289);
+        require(fs::file_size(image) == embeddedSize);
         std::ofstream(image,std::ios::binary|std::ios::trunc) << "broken";
-        require(conduit::standalone::prepareTitleLogoFile(root) == image && fs::file_size(image) == 153289);
+        require(conduit::standalone::prepareTitleLogoFile(root) == image && fs::file_size(image) == embeddedSize);
         const auto returnImage = conduit::standalone::prepareTitleLogoFile(root, 1);
         const auto nextReturnImage = conduit::standalone::prepareTitleLogoFile(root, 2);
         require(image != returnImage && nextReturnImage != returnImage && image != nextReturnImage);

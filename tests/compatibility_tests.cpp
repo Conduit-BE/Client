@@ -23,7 +23,12 @@ int main() {
     profile = selectCompatibility(image);
     require(profile && profile->build == "1.26.63.1" && profile->features.targetedReload);
     require(profile->reload.uiReloadCallbackRva == 0xf20000 && profile->renderer.viewRenderRva == 0x4cb3190);
-    image.fileVersion = {1,26,62,2};
+    image.fileVersion = {1,26,65,1};
+    profile = selectCompatibility(image);
+    require(profile && profile->build == "1.26.65.1" && profile->features.targetedReload);
+    require(profile->features.screenMetrics && profile->features.nativeRenderer && profile->features.mainMenuLogo);
+    require(profile->reload.uiReloadCallbackRva == 0xf20000 && profile->renderer.viewRenderRva == 0x4cb3210);
+    image.fileVersion = {1,26,65,2};
     require(!selectCompatibility(image));
     image.fileVersion = {1,26,62,1};
     image.machine = 0x14c;

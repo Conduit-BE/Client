@@ -2,6 +2,7 @@
 #include "minecraft/versions/bedrock_1_26_60_5.hpp"
 #include "minecraft/versions/bedrock_1_26_62_1.hpp"
 #include "minecraft/versions/bedrock_1_26_63_1.hpp"
+#include "minecraft/versions/bedrock_1_26_65_1.hpp"
 #include <atomic>
 #include <stdexcept>
 #ifdef _WIN32
@@ -18,6 +19,8 @@ const CompatibilityProfile* selectCompatibility(const ExecutableIdentity& identi
         return &versions::bedrock126621;
     if (identity.fileVersion == versions::bedrock126631.fileVersion)
         return &versions::bedrock126631;
+    if (identity.fileVersion == versions::bedrock126651.fileVersion)
+        return &versions::bedrock126651;
     return nullptr;
 }
 const CompatibilityProfile* runningCompatibility() noexcept { return selected.load(std::memory_order_acquire); }
