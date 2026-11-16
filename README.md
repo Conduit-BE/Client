@@ -13,7 +13,9 @@
   <a href="https://discord.gg/bestack">
     <img src="https://img.shields.io/discord/1402649772271210566?logo=discord&logoColor=white&color=5865F2&style=for-the-badge" alt="Discord">
   </a>
-  <img src="https://img.shields.io/github/stars/Conduit-BE/client?style=for-the-badge" alt="GitHub Stars">
+  <a href="https://github.com/Conduit-BE/Client">
+    <img src="https://img.shields.io/github/stars/Conduit-BE/client?style=for-the-badge" alt="GitHub Stars">
+  </a>
 </div>
 
 <h2>Introduction</h2>
@@ -29,24 +31,17 @@ The project is actively developed, with more debugging, profiling, and developme
 - **JSON UI Hot Reload** — Reload JSON UI definitions without restarting Minecraft or rejoining a world.
 - **Developer Diagnostics** — Inspect runtime information through an in-game debug overlay.
 - **UI Hover Inspector** — Highlight the topmost visible legacy UI control and inspect its runtime properties and ancestors.
-- **Screen Detection** — Identify the currently active Minecraft UI screen.
 - **Element Statistics** — Monitor runtime UI element counts and factory statistics.
-- **Version Compatibility** — A dedicated compatibility framework for verified Minecraft Bedrock versions.
 
-Set `ui_scale` in `config.json` to resize the F3 diagnostics and F5 tooltip. Restart Minecraft after changing settings. [Configuration](docs/configuration.md#diagnostics)
+Set `ui_scale` in `config.json` to resize the diagnostics and hover-tooltip. Restart Minecraft after changing settings. [Configuration](docs/configuration.md#diagnostics)
 
 ## Installation
 
-1. Download the latest compatible `ConduitClient.dll` from the [v0.6.1 release](https://github.com/Conduit-BE/client/releases/tag/v0.6.1).
+1. Download the latest compatible `ConduitClient.dll` from the [latest release](https://github.com/Conduit-BE/client/releases/latest).
 2. Verify the downloaded DLL against the provided `SHA256SUMS` file.
-3. Configure your Windows x64 DLL injector or BedrockOnLinux's built-in injector to load `ConduitClient.dll`. On LeviLauncher 1.1.0, import it as a `preload-native` mod in a supported GDK instance.
+3. Configure your Windows x64 DLL injector or BedrockOnLinux's built-in injector to load `ConduitClient.dll`. Alternatively use the dedicated [Conduit Launcher](https://github.com/Conduit-BE/Launcher)
 4. Launch a supported Minecraft: Bedrock Edition version.
-5. Open a world with your development resource pack enabled.
-6. Modify a JSON UI file and press **Ctrl + R** to reload its definitions.
-
-Conduit Client automatically initializes its supported components and uses targeted JSON UI reloading. No manual resource-pack path or reload-mode configuration is required.
-
-The resource pack must already be active in Minecraft. Conduit Client does not install or activate resource packs.
+5. Open a world or join a server with your resource pack enabled.
 
 [Full installation, building, and troubleshooting documentation](docs/standalone-initialization.md).
 
@@ -57,11 +52,11 @@ Conduit Client provides keyboard shortcuts to simplify your JSON UI development 
 | Keybind | Action | Description |
 |---|---|---|
 | <code>Ctrl&nbsp;+&nbsp;R</code> | Reload JSON UI | Reloads JSON UI definitions from the active development resource pack. |
-| `F3` | Toggle Diagnostics | Shows or hides the debug overlay with screen information, UI statistics, and performance metrics. |
-| `F5` | Toggle UI Inspector | Toggles the blue highlight and tooltip for the topmost visible legacy UI control under the cursor. |
+| `F3` | Toggle&nbsp;Diagnostics | Shows or hides the debug overlay with screen information, UI statistics, and performance metrics. |
+| `F5` | Toggle&nbsp;UI&nbsp;Inspector | Toggles the blue highlight and tooltip for the topmost visible legacy UI control under the cursor. |
 | <code>Ctrl&nbsp;+&nbsp;K</code> | Eject Client | Safely deactivates Conduit Client; the DLL remains pinned until Minecraft exits. |
 
-## Diagnostics
+## Diagnostics and tooltip
 
 The in-game diagnostics overlay provides real-time information about Minecraft's UI environment and Conduit Client's operations.
 
@@ -74,7 +69,9 @@ Available diagnostics include:
 
 Press `F3` to toggle the diagnostics overlay.
 
-Press `F5` to toggle the hover inspector. The tooltip shows the control name, runtime type, layer, size, position, visibility, and up to six ancestors.
+The hover-tooltip displays information about the most-top currently hovered UI element, showing its various properties and highlighting the element in blue.
+
+Press `F5` to toggle the hover inspector. The tooltip shows the control name, type, layer, size, position, visibility, and up to six ancestors.
 
 ## Version Compatibility
 
@@ -95,6 +92,8 @@ Conduit Client stores its configuration and diagnostic logs under:
 ```text
 ConduitClient/
 ├── config.json
+├── dll/
+│   └── ConduitClient.dll
 ├── cache/
 │   └── logo-3d2b75a9f89f0a0c.png
 └── logs/
@@ -111,29 +110,13 @@ ConduitClient/
 
 The `logs` directory is created automatically when required. The `cache` PNG is generated from the embedded DLL asset; no external PNG or resource-pack installation is required.
 
-## Limitations
-
-Conduit Client is currently a beta development tool and relies on native integration with Minecraft Bedrock.
-
-- Only explicitly verified Minecraft versions are supported.
-- JSON UI hot reloading targets UI definitions rather than all game resources.
-- Some UI changes may require closing and reopening the affected screen.
-- Unsupported native features are disabled rather than executed with unverified addresses.
-- Ctrl+K performs safe deactivation; physical DLL unloading is not implemented.
-- The main-menu logo replacement is guarded by the active frontend scene, exact title image source, and conservative global-pack metadata checks. Unknown/customized profiles retain original rendering.
-- Title rendering was visually checked in-game; world/loading/pause/custom-pack transitions and new-module deactivation still need manual regression verification.
-
-Features involving native Minecraft functionality may require additional in-game verification after updates.
-
 ## Development
 
 Conduit Client is actively developed with a focus on stability, performance, and developer experience.
 
 Useful resources:
 
-- [v0.6.1 release notes](docs/releases/v0.6.1.md)
-- [v0.6.0-beta release notes](docs/releases/v0.6.0-beta.md)
-- [Title logo implementation and evidence](docs/title-logo-fix.md)
+- [v0.6.1-beta release notes](docs/releases/v0.6.1.md)
 - [Standalone installation and build](docs/standalone-initialization.md)
 - [Foundation API and tests](docs/build.md)
 - [Native JSON UI reverse-engineering research](docs/reverse-engineering/1.26.60-json-ui-only-prototype.md)
